@@ -1,0 +1,115 @@
+<!doctype html>
+<!-- graphly viewer: minimal single-file sigma.js explorer for one graph file.
+     Settings (edge visibility, color mode, cluster colors) are config-driven
+     and served by `graphly view` at /settings.json alongside /graph.json. -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>graphly viewer</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    #app { position: absolute; inset: 0; }
+    #panel { position: absolute; top: 12px; left: 12px; z-index: 1; min-width: 180px;
+             max-height: 90vh; overflow-y: auto; padding: 10px 14px; font-size: 13px;
+             background: #ffffffd9; border-radius: 8px; box-shadow: 0 1px 4px #0003; }
+    #panel h3 { margin: 8px 0 4px; font-size: 13px; }
+    #panel li { list-style: none; margin: 2px 0; }
+    #panel ul { margin: 0; padding: 0; }
+    .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 6px;
+              border-radius: 5px; vertical-align: baseline; }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<div id="panel"></div>
+<script src="https://unpkg.com/graphology@0.26.0/dist/graphology.umd.min.js"></script>
+<script src="https://unpkg.com/graphology-library@0.8.0/dist/graphology-library.min.js"></script>
+<script src="https://unpkg.com/sigma@3.0.2/dist/sigma.min.js"></script>
+<script>
+  const PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#46f0f0',
+                   '#f032e6', '#bcf60c', '#008080', '#9a6324', '#800000', '#808000'];
+
+  // Map each leaf node to its parent cluster via the 'contains' hierarchy edges
+  function cluster_of(graph) {
+    const parents = {};
+    graph.forEachDirectedEdge((edge, attrs, source, target) => {
+      if (attrs.type === 'contains' && source.startsWith('#cluster')) parents[target] = source;
+    });
+    return parents;
+  }
+
+  // Fixed user-supplied color per cluster label, or a palette color per cluster index
+  function cluster_colors(graph, settings) {
+    const colors = {};
+    graph.forEachNode((node, attrs) => {
+      if (attrs.type !== 'cluster') return;
+      const index = Number(node.split('_')[1]);
+      colors[node] = settings.cluster_colors[attrs.key] ?? PALETTE[index % PALETTE.length];
+    });
+    return colors;
+  }
+
+  // Light-to-dark blue interpolation by weight relative to the heaviest leaf
+  function weight_color(weight, max_weight) {
+    const level = Math.round(232 - 180 * Math.sqrt(weight / max_weight));
+    return `rgb(${level}, ${level + 8}, 255)`;
+  }
+
+  // Style every node: label and size from weight, color by cluster or weight
+  function style_nodes(graph, settings) {
+    const parents = cluster_of(graph);
+    const colors = cluster_colors(graph, settings);
+    const max_weight = Math.max(...graph.mapNodes((n, a) => a.refs ? a.weight : 0), 1e-9);
+
+    graph.forEachNode((node, attrs) => {
+      const by_cluster = colors[parents[node] ?? node] ?? '#444444';
+      graph.mergeNodeAttributes(node, {
+        label: attrs.key,
+        size: attrs.type === 'root' ? 14 : attrs.type === 'cluster' ? 10
+          : 4 + 8 * Math.sqrt(Math.min(1, attrs.weight / max_weight)),
+        color: settings.color_by === 'weight' && attrs.refs
+          ? weight_color(attrs.weight, max_weight) : by_cluster,
+      });
+    });
+  }
+
+  // Side panel: categories list (extracted tag types) and all cluster nodes
+  function render_panel(graph, settings) {
+    const types = new Set(graph.mapNodes((n, a) => a.refs ? a.type : null).filter(Boolean));
+    const colors = cluster_colors(graph, settings);
+    const clusters = graph.filterNodes((n, a) => a.type === 'cluster').map(node => {
+      const attrs = graph.getNodeAttributes(node);
+      return `<li><span class="swatch" style="background:${colors[node]}"></span>` +
+             `${attrs.key} (${graph.outDegree(node)})</li>`;
+    });
+    document.getElementById('panel').innerHTML =
+      `<h3>Categories</h3><ul>${[...types].map(t => `<li>${t}</li>`).join('')}</ul>` +
+      `<h3>Clusters</h3><ul>${clusters.join('')}</ul>`;
+  }
+
+  async function main() {
+    const [graph_data, settings] = await Promise.all([
+      fetch('/graph.json').then(response => response.json()),
+      fetch('/settings.json').then(response => response.json()),
+    ]);
+    const graph = graphology.Graph.from(graph_data);
+
+    style_nodes(graph, settings);
+    render_panel(graph, settings);
+    if (!settings.show_edges)
+      graph.forEachEdge(edge => graph.setEdgeAttribute(edge, 'hidden', true));
+
+    // Spread nodes with a circular seed plus a short force-directed refinement
+    graphologyLibrary.layout.circular.assign(graph);
+    graphologyLibrary.layoutForceAtlas2.assign(graph, {
+      iterations: 200,
+      settings: graphologyLibrary.layoutForceAtlas2.inferSettings(graph),
+    });
+
+    new Sigma(graph, document.getElementById('app'), { defaultEdgeColor: '#ccc' });
+  }
+
+  main();
+</script>
+</body>
+</html>

@@ -13,7 +13,7 @@ Taggly API for the bulk of complex functionality.
 ## Graph Structure
 
 The document knowledge graph is built bottom-up and contains:
-- A **root node** computed from the collected cluster nodes that categorizes the overall document
+- A **root node** computed from the collected cluster and leaf nodes that categorizes the overall document
 - **Cluster nodes** (up to `max_clusters`), each summarizing a set of leaf nodes
 - **Leaf nodes** (up to `max_leaves` per cluster) representing extracted entities, keywords, topics, or other concepts
 
