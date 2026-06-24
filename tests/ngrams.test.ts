@@ -1,67 +1,38 @@
 /**
- * Unit tests for n-gram extraction and tag anchoring.
+ * Unit tests for surface form extraction.
  */
 
 import { describe, expect, it } from 'vitest';
 
-import { anchor_tags, extract_ngrams, tokenize } from '../src/ngrams.js';
+import { find_forms } from '../src/ngrams.js';
 
 
-describe('tokenize', () => {
-  it('lowercases and strips punctuation', () => {
-    expect(tokenize('Hello, World! Foo-bar.')).toEqual(['hello', 'world', 'foo-bar']);
+describe('find_forms', () => {
+  it('finds all case variants of a multi-word keyword', () => {
+    const forms = find_forms('machine learning', 'Machine Learning powers deep machine learning.');
+    expect(forms).toContain('Machine Learning');
+    expect(forms).toContain('machine learning');
+    expect(forms.length).toBe(2);
   });
 
-  it('returns an empty list for empty text', () => {
-    expect(tokenize('')).toEqual([]);
-  });
-});
-
-
-describe('extract_ngrams', () => {
-  it('counts unigrams and bigrams', () => {
-    const counts = extract_ngrams(['a', 'b', 'a', 'b'], [1, 2]);
-    expect(counts.get('a')).toBe(2);
-    expect(counts.get('a b')).toBe(2);
-    expect(counts.get('b a')).toBe(1);
+  it('returns an empty array when the keyword is not present', () => {
+    expect(find_forms('neural network', 'machine learning is useful')).toEqual([]);
   });
 
-  it('skips sizes longer than the token stream', () => {
-    expect(extract_ngrams(['a'], [2]).size).toBe(0);
-  });
-});
-
-
-describe('anchor_tags', () => {
-  const counts = extract_ngrams(tokenize('deep learning models use deep learning'), [1, 2]);
-
-  it('sums occurrences across all matching n-grams', () => {
-    const [tag] = anchor_tags([{ key: 'deep learning', type: 'keyword' }], counts, 10);
-    // 'deep learning' x2, 'learning models' n/a; matches: 'deep learning'(2) bigram only
-    expect(tag.count).toBeGreaterThanOrEqual(2);
-    expect(tag.refs[0]).toBe('deep learning');
+  it('matches whole words only, not substrings', () => {
+    const forms = find_forms('AI', 'AISystem trains AI models for AIR quality.');
+    expect(forms).toEqual(['AI']);
   });
 
-  it('caps refs at max_refs and orders by count', () => {
-    const [tag] = anchor_tags([{ key: 'deep', type: 'keyword' }], counts, 2);
-    expect(tag.refs.length).toBeLessThanOrEqual(2);
-    expect(tag.refs[0]).toBe('deep');
+  it('finds single-word keyword variants', () => {
+    const forms = find_forms('rocket', 'The Rocket launched. A rocket engine fired.');
+    expect(forms).toContain('Rocket');
+    expect(forms).toContain('rocket');
+    expect(forms.length).toBe(2);
   });
 
-  it('drops tags without any matching n-gram', () => {
-    expect(anchor_tags([{ key: 'missing', type: 'keyword' }], counts, 5)).toEqual([]);
-  });
-
-  it('matches whole tokens only', () => {
-    const sub_counts = extract_ngrams(tokenize('maintain the system'), [1]);
-    expect(anchor_tags([{ key: 'ai', type: 'keyword' }], sub_counts, 5)).toEqual([]);
-  });
-
-  it('deduplicates tags by normalized key keeping the first type', () => {
-    const tags = anchor_tags(
-      [{ key: 'Deep Learning', type: 'entity' }, { key: 'deep learning', type: 'keyword' }],
-      counts, 5);
-    expect(tags.length).toBe(1);
-    expect(tags[0].type).toBe('entity');
+  it('deduplicates repeated identical forms', () => {
+    const forms = find_forms('data', 'training data and test data and more data');
+    expect(forms).toEqual(['data']);
   });
 });

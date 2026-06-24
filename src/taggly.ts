@@ -1,124 +1,103 @@
 /**
- * Taggly client: real HTTP calls for implemented commands (keys, ents),
- * deterministic local placeholders for planned commands (score, rel, ext),
- * and Taggly API server lifecycle management.
+ * Taggly client: HTTP calls for the tags, desc, topics, keys, and rank commands,
+ * with API server lifecycle management.
  */
 
 import { ChildProcess, spawn } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { tokenize } from './ngrams.js';
 
-
-export interface Relation { source: string; target: string; type: string }
+export interface Tag { key: string; type: string }
 
 export interface TagglySession { client: TagglyClient; stop: () => void }
 
 
-// Minimal stop-word set used only by the ext placeholder's frequency heuristic
-const STOP_WORDS = new Set([
-  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'for', 'from', 'had', 'has',
-  'have', 'he', 'her', 'his', 'if', 'in', 'is', 'it', 'its', 'not', 'of', 'on', 'or',
-  'she', 'that', 'the', 'their', 'they', 'this', 'to', 'was', 'we', 'were', 'while',
-  'will', 'with', 'you',
-]);
-
 const SPAWN_TIMEOUT_MS = 300_000;  // First spawn may download/load heavy models
+
+const TAG_TYPES: Record<string, string> = {
+  entities: 'entity', keywords: 'keyword', topics: 'topic',
+  concepts: 'concept', relations: 'relation',
+};
 
 
 export class TagglyClient {
   constructor(readonly url: string) {}
 
-  /** POST content to a Taggly command endpoint with config values as query params. */
-  private async post(command: string, content: string, params: Record<string, string>) {
+  /** POST body to a Taggly command endpoint with optional query params. */
+  private async post(
+      command: string, body: Record<string, unknown>, params: Record<string, string> = {}
+  ) {
     const query = new URLSearchParams(params).toString();
-    const response = await fetch(`${this.url}/${command}?${query}`, {
+    const path = query ? `${this.url}/${command}?${query}` : `${this.url}/${command}`;
+    const response = await fetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(body),
     });
     if (!response.ok) throw new Error(`taggly ${command} failed: HTTP ${response.status}`);
     return response.json();
   }
 
-  /** Extract up to top_n keywords (phrases up to ngram_max tokens) from content. */
-  async keys(content: string, top_n: number, ngram_max = 3): Promise<string[]> {
-    const data = await this.post('keys', content,
-                                 { top_n: String(top_n), ngram_max: String(ngram_max) });
-    return data.keywords;
-  }
+  /**
+   * Extract up to top_n typed tags from content.
+   * Parses the current Dict[str, List[str]] format: each dict key is a tag type
+   * (entities, keywords, …), values are the tag strings of that type. The combined
+   * 'ranked' or 'scored' key provides the priority order. Plural dict keys are
+   * normalized to singular type names (entities→entity, keywords→keyword, etc.).
+   * Falls back to assigning type 'keyword' for legacy plain string array responses.
+   */
+  async tags(content: string, top_n: number): Promise<Tag[]> {
+    const data = await this.post('tags', { content }, { top_n: String(top_n) });
+    const raw = data.tags;
 
-  /** Extract up to top_n named entities from content. */
-  async ents(content: string, top_n: number): Promise<string[]> {
-    const data = await this.post('ents', content, { top_n: String(top_n) });
-    return data.entities;
-  }
+    if (Array.isArray(raw))
+      return (raw as string[]).map(key => ({ key, type: 'keyword' }));
 
-  // --- Placeholders for planned Taggly commands (score, rel, ext). Each mirrors the
-  // --- planned command's contract and is swapped for an HTTP call once available.
-
-  /** score placeholder: Jaccard token overlap standing in for semantic similarity. */
-  score(a: string, b: string): number {
-    const a_tokens = new Set(tokenize(a));
-    const b_tokens = new Set(tokenize(b));
-    const shared = [...a_tokens].filter(token => b_tokens.has(token)).length;
-    const union = new Set([...a_tokens, ...b_tokens]).size;
-    return union ? shared / union : 0;
-  }
-
-  /** rel placeholder: MMR-shaped selection balancing relevance and diversity. */
-  rel(candidates: string[], relevance: Map<string, number>, top_n: number): string[] {
-    const max_relevance = Math.max(1, ...relevance.values());
-    const selected: string[] = [];
-    const remaining = [...candidates];
-
-    while (selected.length < top_n && remaining.length) {
-      let best = remaining[0];
-      let best_score = -Infinity;
-      for (const candidate of remaining) {
-        const relevance_score = (relevance.get(candidate) ?? 0) / max_relevance;
-        const redundancy = Math.max(0, ...selected.map(pick => this.score(candidate, pick)));
-        const mmr = 0.5 * relevance_score - 0.5 * redundancy;
-        if (mmr > best_score) [best, best_score] = [candidate, mmr];
-      }
-      selected.push(best);
-      remaining.splice(remaining.indexOf(best), 1);
+    const groups = raw as Record<string, string[]>;
+    const reserved = new Set(['ranked', 'scored']);
+    const type_by_key = new Map<string, string>();
+    for (const [plural_type, keys] of Object.entries(groups)) {
+      if (reserved.has(plural_type)) continue;
+      const type = TAG_TYPES[plural_type] ?? plural_type;
+      for (const key of keys) if (!type_by_key.has(key)) type_by_key.set(key, type);
     }
-    return selected;
-  }
 
-  /** ext placeholder (tags): most frequent non-stop-word tokens, count then alpha order. */
-  ext_tags(content: string, top_n: number): string[] {
-    const counts = new Map<string, number>();
-    for (const token of tokenize(content)) {
-      if (token.length > 2 && !STOP_WORDS.has(token))
-        counts.set(token, (counts.get(token) ?? 0) + 1);
-    }
-    return [...counts.entries()]
-      .sort(([a, a_count], [b, b_count]) => b_count - a_count || a.localeCompare(b))
+    const ordered: string[] = groups['ranked'] ?? groups['scored'] ?? [...type_by_key.keys()];
+    return ordered
+      .filter(key => type_by_key.has(key))
       .slice(0, top_n)
-      .map(([token]) => token);
+      .map(key => ({ key, type: type_by_key.get(key)! }));
   }
 
-  /** ext placeholder (relations): typed edges between tags sharing an identical ref. */
-  ext_relations(refs_by_tag: Map<string, string[]>): Relation[] {
-    const tags = [...refs_by_tag.keys()];
-    const relations: Relation[] = [];
-    for (let i = 0; i < tags.length; i++) {
-      const refs = new Set(refs_by_tag.get(tags[i]));
-      for (let j = i + 1; j < tags.length; j++) {
-        if (refs_by_tag.get(tags[j])!.some(ref => refs.has(ref)))
-          relations.push({ source: tags[i], target: tags[j], type: 'co_occurs' });
-      }
-    }
-    return relations;
+  /** Generate a natural-language description of content. */
+  async desc(content: string): Promise<string> {
+    const data = await this.post('desc', { content });
+    return data.description as string;
+  }
+
+  /** Discover up to top_n topics across the supplied documents. */
+  async topics(documents: string[], top_n: number): Promise<string[]> {
+    const data = await this.post('topics', { documents }, { top_n: String(top_n) });
+    return data.topics as string[];
+  }
+
+  /** Extract up to top_n keyword phrases from content. */
+  async keys(content: string, top_n: number): Promise<string[]> {
+    const data = await this.post('keys', { content }, { top_n: String(top_n) });
+    return data.keywords as string[];
+  }
+
+  /** Rank candidates by Maximal Marginal Relevance against query, returning top_n. */
+  async rank(query: string, candidates: string[], top_n: number): Promise<string[]> {
+    const data = await this.post('rank', { query, candidates }, { top_n: String(top_n) });
+    return data.ranked as string[];
   }
 }
 
 
 /**
  * Connect to a running Taggly API at url, or spawn a local `taggly` server
- * (MODE=api with keys/ents warmup) when the url is local and unreachable.
+ * (MODE=api with tags/keys warmup) when the url is local and unreachable.
  * stop() kills the server only if this session spawned it.
  */
 export async function connect_taggly(url: string): Promise<TagglySession> {
@@ -131,7 +110,7 @@ export async function connect_taggly(url: string): Promise<TagglySession> {
 
   console.error(`spawning taggly api at ${url} (first run may take a while)...`);
   const child = spawn('taggly', [], {
-    env: { ...process.env, MODE: 'api', PORT: port || '8000', WARMUP: '["keys", "ents"]' },
+    env: { ...process.env, MODE: 'api', PORT: port || '8000', WARMUP: '["tags", "keys"]' },
     stdio: 'ignore',
   });
   await wait_healthy(url, child);

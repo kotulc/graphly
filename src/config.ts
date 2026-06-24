@@ -10,18 +10,13 @@ import { z } from 'zod';
 
 export const config_schema = z.object({
   output: z.string().default('graph.json'),
-  max_clusters: z.number().int().positive().default(12),
-  max_leaves: z.number().int().positive().default(24),
-  max_refs: z.number().int().positive().default(36),
-  ngrams: z.array(z.number().int().positive()).default([1, 2, 3]),
-  tag_types: z.array(z.string()).default(['keyword', 'entity']),
-  similarity: z.number().min(0).max(1).optional(),
-  extract_relations: z.boolean().default(false),
-  normalize: z.boolean().default(false),
-  cluster_colors: z.record(z.string(), z.string()).default({}),
+  max_tags: z.number().int().positive().default(10),
+  max_keys: z.number().int().positive().default(20),
+  max_topics: z.number().int().positive().default(5),
+  max_leaves: z.number().int().positive().default(5),
   taggly_url: z.url().default('http://127.0.0.1:8000'),
   show_edges: z.boolean().default(true),
-  color_by: z.enum(['cluster', 'weight']).default('cluster'),
+  color_by: z.enum(['type', 'weight']).default('type'),
   port: z.number().int().positive().default(3000),
 });
 

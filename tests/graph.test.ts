@@ -1,73 +1,86 @@
 /**
- * Unit tests for graph assembly: nodes, hierarchy edges, and optional edge types.
+ * Unit tests for graph assembly: nodes, hierarchy edges, and export ordering.
  */
 
 import { describe, expect, it } from 'vitest';
 
-import { add_relation_edges, add_similarity_edges, build_graph } from '../src/graph.js';
-import { TagglyClient } from '../src/taggly.js';
-import { Tag } from '../src/ngrams.js';
+import { build_graph } from '../src/graph.js';
 
 
-const client = new TagglyClient('http://127.0.0.1:8000');
-
-const leaf = (key: string, count: number, weight: number): Tag =>
-  ({ key, type: 'keyword', refs: [key], count, weight });
-
-const clusters = [
-  { label: 'letters', leaves: [leaf('alpha beta', 4, 0.2), leaf('gamma', 2, 0.1)] },
-  { label: 'space', leaves: [leaf('rocket', 2, 0.1)] },
+const tags = [
+  { key: 'machine learning', type: 'keyword' },
+  { key: 'Acme Corp', type: 'entity' },
 ];
+
+const leaves_by_tag = new Map([
+  ['machine learning', ['neural network', 'training data']],
+  ['Acme Corp', ['training data', 'launch site']],
+]);
+
+const forms_by_leaf = new Map([
+  ['neural network', ['neural network', 'Neural Network']],
+  ['training data', ['training data']],
+  ['launch site', ['launch site', 'Launch Site']],
+]);
+
+const doc_key = 'test.md';
+const description = 'A document about AI and rockets.';
+const topics = ['machine learning', 'aerospace'];
 
 
 describe('build_graph', () => {
-  const graph = build_graph('document', clusters);
+  const graph = build_graph(doc_key, description, topics, tags, leaves_by_tag, forms_by_leaf);
 
-  it('creates one root, one node per cluster, and one node per leaf', () => {
+  it('creates one doc node, one per tag, and one per unique leaf', () => {
+    // unique leaves: neural network, training data, launch site = 3
     expect(graph.order).toBe(1 + 2 + 3);
-    expect(graph.getNodeAttributes('#root')).toMatchObject({ key: 'document', type: 'root' });
   });
 
-  it('aggregates cluster and root count and weight from children', () => {
-    expect(graph.getNodeAttributes('#cluster_0')).toMatchObject({ count: 6, weight: 0.3 });
-    expect(graph.getNodeAttributes('#root')).toMatchObject({ count: 8, weight: 0.4 });
+  it('sets doc node attributes correctly', () => {
+    const attrs = graph.getNodeAttributes('#doc');
+    expect(attrs.key).toBe(doc_key);
+    expect(attrs.type).toBe('doc');
+    expect(attrs.label).toBe('machine learning');
+    expect(attrs.description).toBe(description);
+    expect(attrs.topics).toEqual(topics);
+    expect(attrs.children).toEqual(['machine learning', 'Acme Corp']);
   });
 
-  it('always writes root->cluster and cluster->leaf hierarchy edges', () => {
-    expect(graph.hasDirectedEdge('#root', '#cluster_0')).toBe(true);
-    expect(graph.hasDirectedEdge('#cluster_1', 'rocket')).toBe(true);
-    expect(graph.size).toBe(2 + 3);
+  it('sets tag node attributes including children list', () => {
+    const attrs = graph.getNodeAttributes('machine learning');
+    expect(attrs.type).toBe('keyword');
+    expect(attrs.children).toEqual(['neural network', 'training data']);
   });
 
-  it('preserves leaf attributes', () => {
-    expect(graph.getNodeAttributes('alpha beta'))
-      .toEqual({ key: 'alpha beta', type: 'keyword', refs: ['alpha beta'], count: 4, weight: 0.2 });
+  it('sets leaf node attributes with forms and empty children', () => {
+    const attrs = graph.getNodeAttributes('neural network');
+    expect(attrs.type).toBe('keyword');
+    expect(attrs.forms).toEqual(['neural network', 'Neural Network']);
+    expect(attrs.children).toEqual([]);
   });
-});
 
-
-describe('add_similarity_edges', () => {
-  it('adds related edges only at or above the threshold', () => {
-    const graph = build_graph('document', clusters);
-    add_similarity_edges(graph, 0.3, client);
-    // 'alpha beta' vs 'gamma'/'rocket' share no tokens; no pair meets 0.3
-    expect(graph.size).toBe(5);
-
-    add_similarity_edges(graph, 0, client);
-    // Zero threshold connects every leaf pair
-    expect(graph.size).toBe(5 + 3);
+  it('deduplicates shared leaf nodes across tags', () => {
+    // 'training data' appears in both tags' children but only as one graph node
+    expect(graph.filterNodes(n => n === 'training data').length).toBe(1);
   });
-});
 
+  it('writes doc->tag and tag->leaf hierarchy edges', () => {
+    expect(graph.hasDirectedEdge('#doc', 'machine learning')).toBe(true);
+    expect(graph.hasDirectedEdge('#doc', 'Acme Corp')).toBe(true);
+    expect(graph.hasDirectedEdge('machine learning', 'neural network')).toBe(true);
+    expect(graph.hasDirectedEdge('Acme Corp', 'launch site')).toBe(true);
+  });
 
-describe('add_relation_edges', () => {
-  it('adds typed edges between existing leaf nodes only', () => {
-    const graph = build_graph('document', clusters);
-    add_relation_edges(graph, [
-      { source: 'gamma', target: 'rocket', type: 'co_occurs' },
-      { source: 'gamma', target: 'missing', type: 'co_occurs' },
-    ]);
-    expect(graph.size).toBe(6);
-    expect(graph.hasUndirectedEdge('gamma', 'rocket')).toBe(true);
+  it('exports nodes in order: doc first, then tags, then leaves', () => {
+    const exported = graph.export();
+    const ids = exported.nodes!.map((n: any) => n.key);
+    const tag_ids = new Set(tags.map(t => t.key));
+    expect(ids[0]).toBe('#doc');
+    // All tag IDs appear before any leaf ID
+    let saw_leaf = false;
+    for (const id of ids.slice(1)) {
+      if (!tag_ids.has(id)) saw_leaf = true;
+      expect(saw_leaf && tag_ids.has(id)).toBe(false);
+    }
   });
 });

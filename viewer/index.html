@@ -1,7 +1,7 @@
 <!doctype html>
 <!-- graphly viewer: minimal single-file sigma.js explorer for one graph file.
-     Settings (edge visibility, color mode, cluster colors) are config-driven
-     and served by `graphly view` at /settings.json alongside /graph.json. -->
+     Settings (edge visibility, color mode) are config-driven and served by
+     `graphly view` at /settings.json alongside /graph.json. -->
 <html>
 <head>
   <meta charset="utf-8">
@@ -29,62 +29,37 @@
   const PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#46f0f0',
                    '#f032e6', '#bcf60c', '#008080', '#9a6324', '#800000', '#808000'];
 
-  // Map each leaf node to its parent cluster via the 'contains' hierarchy edges
-  function cluster_of(graph) {
-    const parents = {};
-    graph.forEachDirectedEdge((edge, attrs, source, target) => {
-      if (attrs.type === 'contains' && source.startsWith('#cluster')) parents[target] = source;
-    });
-    return parents;
-  }
-
-  // Fixed user-supplied color per cluster label, or a palette color per cluster index
-  function cluster_colors(graph, settings) {
+  // Assign a palette color to each unique node type, sorted for stability
+  function type_colors(graph) {
+    const types = [...new Set(graph.mapNodes((_, a) => a.type))].sort();
     const colors = {};
-    graph.forEachNode((node, attrs) => {
-      if (attrs.type !== 'cluster') return;
-      const index = Number(node.split('_')[1]);
-      colors[node] = settings.cluster_colors[attrs.key] ?? PALETTE[index % PALETTE.length];
-    });
+    types.forEach((type, i) => { colors[type] = PALETTE[i % PALETTE.length]; });
     return colors;
   }
 
-  // Light-to-dark blue interpolation by weight relative to the heaviest leaf
-  function weight_color(weight, max_weight) {
-    const level = Math.round(232 - 180 * Math.sqrt(weight / max_weight));
-    return `rgb(${level}, ${level + 8}, 255)`;
-  }
-
-  // Style every node: label and size from weight, color by cluster or weight
+  // Style every node: label from key, size by node level, color by type
   function style_nodes(graph, settings) {
-    const parents = cluster_of(graph);
-    const colors = cluster_colors(graph, settings);
-    const max_weight = Math.max(...graph.mapNodes((n, a) => a.refs ? a.weight : 0), 1e-9);
-
+    const colors = type_colors(graph);
     graph.forEachNode((node, attrs) => {
-      const by_cluster = colors[parents[node] ?? node] ?? '#444444';
+      const size = attrs.type === 'doc' ? 16
+        : attrs.type === 'keyword' ? 4 + Math.min(8, graph.inDegree(node))
+        : 10;
       graph.mergeNodeAttributes(node, {
         label: attrs.key,
-        size: attrs.type === 'root' ? 14 : attrs.type === 'cluster' ? 10
-          : 4 + 8 * Math.sqrt(Math.min(1, attrs.weight / max_weight)),
-        color: settings.color_by === 'weight' && attrs.refs
-          ? weight_color(attrs.weight, max_weight) : by_cluster,
+        size,
+        color: colors[attrs.type] ?? '#444444',
       });
     });
   }
 
-  // Side panel: categories list (extracted tag types) and all cluster nodes
+  // Side panel: tag type categories with color swatches
   function render_panel(graph, settings) {
-    const types = new Set(graph.mapNodes((n, a) => a.refs ? a.type : null).filter(Boolean));
-    const colors = cluster_colors(graph, settings);
-    const clusters = graph.filterNodes((n, a) => a.type === 'cluster').map(node => {
-      const attrs = graph.getNodeAttributes(node);
-      return `<li><span class="swatch" style="background:${colors[node]}"></span>` +
-             `${attrs.key} (${graph.outDegree(node)})</li>`;
-    });
+    const colors = type_colors(graph);
+    const types = [...new Set(graph.mapNodes((_, a) => a.type))].sort();
     document.getElementById('panel').innerHTML =
-      `<h3>Categories</h3><ul>${[...types].map(t => `<li>${t}</li>`).join('')}</ul>` +
-      `<h3>Clusters</h3><ul>${clusters.join('')}</ul>`;
+      `<h3>Categories</h3><ul>${types.map(t =>
+        `<li><span class="swatch" style="background:${colors[t]}"></span>${t}</li>`
+      ).join('')}</ul>`;
   }
 
   async function main() {

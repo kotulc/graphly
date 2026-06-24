@@ -1,73 +1,97 @@
 /**
- * Integration tests for the full document graph pipeline using a stubbed
- * Taggly client (no HTTP, no real models).
+ * Integration tests for the document graph pipeline using a stubbed Taggly client.
  */
 
 import { describe, expect, it } from 'vitest';
 
 import { generate_graph } from '../src/pipeline.js';
 import { load_config } from '../src/config.js';
-import { TagglyClient } from '../src/taggly.js';
+import { Tag, TagglyClient } from '../src/taggly.js';
 
 
-// Stub overrides the HTTP commands with canned tags; placeholders stay real
 class StubClient extends TagglyClient {
-  async keys(content: string, top_n: number): Promise<string[]> {
-    if (top_n === 1) return [content.split(',')[0].trim().split(' ')[0]];
-    return ['rocket engine', 'rocket', 'neural network', 'training data'];
+  async tags(_content: string, top_n: number): Promise<Tag[]> {
+    return [
+      { key: 'machine learning', type: 'keyword' },
+      { key: 'Acme Corp', type: 'entity' },
+    ].slice(0, top_n);
   }
-
-  async ents(content: string, top_n: number): Promise<string[]> {
-    return ['Acme'];
+  async desc(_content: string): Promise<string> {
+    return 'A document about AI and rockets.';
+  }
+  async topics(_documents: string[], top_n: number): Promise<string[]> {
+    return ['machine learning', 'aerospace', 'neural networks'].slice(0, top_n);
+  }
+  async keys(_content: string, top_n: number): Promise<string[]> {
+    return ['neural network', 'training data', 'launch site', 'rocket engine'].slice(0, top_n);
+  }
+  async rank(_query: string, candidates: string[], top_n: number): Promise<string[]> {
+    return candidates.slice(0, top_n);
   }
 }
 
 
 const client = new StubClient('http://127.0.0.1:8000');
 
-const text = `Acme built a rocket engine at the launch site. The rocket engine fired
+const text = `Acme Corp built a rocket engine at the launch site. The rocket engine fired
 while the neural network processed training data. Acme trained the neural network
 on training data near the launch site, and the rocket engine roared.`;
 
 
 describe('generate_graph', () => {
-  it('produces a serialized graph with root, cluster, and leaf nodes', async () => {
-    const config = load_config(undefined, { max_clusters: 2, max_leaves: 3 });
-    const graph = await generate_graph(text, config, client);
-    const types = graph.nodes!.map(node => (node.attributes as any).type);
+  it('produces a graph with doc, tag, and leaf node types', async () => {
+    const config = load_config(undefined, { max_tags: 2, max_keys: 4, max_leaves: 2 });
+    const graph = await generate_graph(text, 'test.md', config, client);
+    const types = graph.nodes!.map((n: any) => n.attributes.type);
 
-    expect(types.filter(t => t === 'root').length).toBe(1);
-    expect(types.filter(t => t === 'cluster').length).toBeLessThanOrEqual(2);
+    expect(types.filter(t => t === 'doc').length).toBe(1);
     expect(types).toContain('keyword');
-    expect(graph.nodes!.length).toBeLessThanOrEqual(1 + 2 + 2 * 3);
+    expect(types).toContain('entity');
   });
 
-  it('respects max_refs and leaves weights partial by default', async () => {
-    const config = load_config(undefined, { max_refs: 2 });
-    const graph = await generate_graph(text, config, client);
-    const root = graph.nodes!.find(node => (node.attributes as any).type === 'root');
-    const leaves = graph.nodes!.filter(node => (node.attributes as any).refs);
-
-    leaves.forEach(node => expect((node.attributes as any).refs.length).toBeLessThanOrEqual(2));
-    expect((root!.attributes as any).weight).toBeLessThan(1);
+  it('sets the doc label to the first topic', async () => {
+    const config = load_config(undefined, { max_topics: 2 });
+    const graph = await generate_graph(text, 'test.md', config, client);
+    const doc = graph.nodes!.find((n: any) => n.attributes.type === 'doc');
+    expect(doc!.attributes!.label).toBe('machine learning');
   });
 
-  it('normalizes leaf weights to sum to 1 when configured', async () => {
-    const config = load_config(undefined, { normalize: true });
-    const graph = await generate_graph(text, config, client);
-    const root = graph.nodes!.find(node => (node.attributes as any).type === 'root');
-
-    expect((root!.attributes as any).weight).toBeCloseTo(1, 2);
+  it('exports nodes in order: doc, tags, leaves', async () => {
+    const config = load_config(undefined, { max_tags: 2, max_keys: 4, max_leaves: 2 });
+    const graph = await generate_graph(text, 'test.md', config, client);
+    const nodes = graph.nodes!;
+    expect(nodes[0].attributes!.type).toBe('doc');
+    // Leaf nodes have 'forms' (tags do not); all tag nodes must precede all leaf nodes
+    const is_leaf = (n: any) => Array.isArray(n.attributes.forms);
+    let saw_leaf = false;
+    for (const node of nodes.slice(1)) {
+      if (is_leaf(node)) saw_leaf = true;
+      expect(saw_leaf && !is_leaf(node)).toBe(false);
+    }
   });
 
-  it('adds similarity and relation edges only when configured', async () => {
-    const base = await generate_graph(text, load_config(), client);
-    const config = load_config(undefined, { similarity: 0.1, extract_relations: true });
-    const extended = await generate_graph(text, config, client);
+  it('leaf nodes carry forms arrays from document text', async () => {
+    const config = load_config(undefined, { max_tags: 1, max_keys: 2, max_leaves: 2 });
+    const graph = await generate_graph(text, 'test.md', config, client);
+    // Leaf nodes are distinguished by the presence of the 'forms' attribute
+    const leaves = graph.nodes!.filter((n: any) => Array.isArray(n.attributes.forms));
+    expect(leaves.length).toBeGreaterThan(0);
+    leaves.forEach((n: any) => expect(Array.isArray(n.attributes.forms)).toBe(true));
+  });
 
-    const edge_types = (graph: any) => new Set(graph.edges.map((e: any) => e.attributes.type));
-    expect(edge_types(base)).toEqual(new Set(['contains']));
-    expect(edge_types(extended).has('related')).toBe(true);
-    expect(edge_types(extended).has('co_occurs')).toBe(true);
+  it('respects max_leaves per tag node', async () => {
+    const config = load_config(undefined, { max_tags: 2, max_keys: 4, max_leaves: 2 });
+    const graph = await generate_graph(text, 'test.md', config, client);
+    // Tag nodes have a 'children' array but no 'forms' attribute
+    const tags = graph.nodes!.filter(
+      (n: any) => !Array.isArray(n.attributes.forms) && n.attributes.type !== 'doc');
+    tags.forEach((n: any) => expect(n.attributes.children.length).toBeLessThanOrEqual(2));
+  });
+
+  it('sets doc key to the input filename', async () => {
+    const config = load_config();
+    const graph = await generate_graph(text, '/path/to/document.md', config, client);
+    const doc = graph.nodes!.find((n: any) => n.attributes.type === 'doc');
+    expect(doc!.attributes!.key).toBe('document.md');
   });
 });
