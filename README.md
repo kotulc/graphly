@@ -13,18 +13,36 @@ Taggly API for the bulk of complex functionality.
 
 ## Installation
 
-Requires Node.js 18+ and a working [Taggly](https://github.com/kotulc/taggly) installation
-(`pip install -e .` from the taggly repo, with `taggly` on `PATH`).
+Requires Node.js 18+ and a sibling [Taggly](https://github.com/kotulc/taggly) checkout
+at `../taggly`. [uv](https://docs.astral.sh/uv/) is recommended for isolated, reproducible
+Python deps — `npm install` sets up the Taggly venv automatically when uv is available.
 
 ```bash
+# 1 — clone both repos as siblings
+git clone https://github.com/kotulc/taggly
 git clone https://github.com/kotulc/graphly
 cd graphly
+
+# 2 — install (sets up taggly venv automatically if uv is installed)
 npm install
 npm run build
 npm link          # registers 'graphly' as a global command
 ```
 
-`npm link` only needs to run once. After that, `npm run build` is enough to pick up source changes.
+`npm link` only needs to run once. After that, `npm run build` is enough to pick up
+source changes.
+
+**Without uv:** install Taggly manually — `pip install -e ../taggly` or run
+`taggly start` via Docker (see below).
+
+**For GPU / shared deployments:** run Taggly as a Docker container and graphly will
+connect to it automatically:
+```bash
+docker build -t taggly ../taggly
+docker run --rm -p 8000:8000 \
+  -v $HOME/.cache/huggingface:/root/.cache/huggingface \
+  -e HF_TOKEN taggly
+```
 
 
 ## First Use
@@ -40,12 +58,12 @@ graphly document.md --max-tags 8 --max-keys 30 --output doc-graph.json
 graphly view doc-graph.json
 ```
 
-The first run is slow while Taggly loads its models. To reuse a running Taggly server across
-runs (much faster), start it separately and graphly will find it:
+The first run is slow while Taggly loads its models (including Gemma-2b for tag extraction).
+To reuse a running server across runs, start it separately and graphly will find it:
 
 ```bash
 # In a separate terminal
-MODE=api WARMUP='["tags","keys"]' taggly
+taggly start
 
 # Then generate graphs without the startup delay
 graphly document.md

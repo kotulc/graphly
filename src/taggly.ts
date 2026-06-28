@@ -4,7 +4,13 @@
  */
 
 import { ChildProcess, spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
+
+const _dir = dirname(fileURLToPath(import.meta.url));
+const TAGGLY_VENV = resolve(_dir, '..', '..', 'taggly', '.venv');
 
 
 export interface Tag { key: string; type: string }
@@ -29,13 +35,19 @@ export class TagglyClient {
   ) {
     const query = new URLSearchParams(params).toString();
     const path = query ? `${this.url}/${command}?${query}` : `${this.url}/${command}`;
-    const response = await fetch(path, {
+    const options = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-    });
-    if (!response.ok) throw new Error(`taggly ${command} failed: HTTP ${response.status}`);
-    return response.json();
+    };
+
+    const response = await fetch(path, options);
+    if (response.ok) return response.json();
+    if (response.status === 503) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(`taggly ${command} failed: ${err?.detail ?? 'unavailable (503)'}`);
+    }
+    throw new Error(`taggly ${command} failed: HTTP ${response.status}`);
   }
 
   /**
@@ -96,9 +108,20 @@ export class TagglyClient {
 
 
 /**
+ * Resolve the taggly executable: prefer the uv-managed venv at ../taggly/.venv
+ * so graphly uses an isolated, reproducible Python environment. Falls back to
+ * the system PATH when the venv isn't present (e.g. Docker or manual install).
+ */
+function taggly_bin(): string {
+  const venv_bin = join(TAGGLY_VENV, process.platform === 'win32' ? 'Scripts' : 'bin', 'taggly');
+  return existsSync(venv_bin) ? venv_bin : 'taggly';
+}
+
+
+/**
  * Connect to a running Taggly API at url, or spawn a local `taggly` server
- * (MODE=api with tags/keys warmup) when the url is local and unreachable.
- * stop() kills the server only if this session spawned it.
+ * when the url is local and unreachable. stop() kills the server only if this
+ * session spawned it.
  */
 export async function connect_taggly(url: string): Promise<TagglySession> {
   const client = new TagglyClient(url);
@@ -109,9 +132,9 @@ export async function connect_taggly(url: string): Promise<TagglySession> {
     throw new Error(`no taggly api responding at ${url} (cannot spawn a remote server)`);
 
   console.error(`spawning taggly api at ${url} (first run may take a while)...`);
-  const child = spawn('taggly', [], {
-    env: { ...process.env, MODE: 'api', PORT: port || '8000', WARMUP: '["tags", "keys"]' },
-    stdio: 'ignore',
+  const child = spawn(taggly_bin(), ['start'], {
+    env: { ...process.env, PORT: port || '8000' },
+    stdio: ['ignore', 'ignore', 'inherit'],
   });
   await wait_healthy(url, child);
   return { client, stop: () => void child.kill() };

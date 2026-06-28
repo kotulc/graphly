@@ -9,19 +9,27 @@ graphly turns a single text document into a knowledge graph JSON file using
 ## Requirements
 
 - Node.js 18+ (built-in `fetch` is required; developed on Node 22)
-- A [Taggly](https://github.com/kotulc/taggly) installation:
-  `pip install -e .` from the taggly repo, with `taggly` available on `PATH`
+- A sibling [Taggly](https://github.com/kotulc/taggly) checkout at `../taggly`
+- [uv](https://docs.astral.sh/uv/) (recommended) — `npm install` sets up the Taggly
+  venv automatically; without it, install manually with `pip install -e ../taggly`
 
 graphly talks to Taggly over its HTTP API. If no server is running at `taggly_url`,
-graphly spawns `taggly` itself (with `MODE=api` and tags/keys warmup) and shuts it
-down when done. To reuse a long-lived server instead — much faster across runs —
-start one yourself and graphly will find it:
+graphly spawns `taggly start` from the uv-managed venv at `../taggly/.venv` (falls
+back to `taggly` on PATH). The first run is slow while models load. To reuse a
+long-lived server across runs — much faster — start one yourself:
 
-```powershell
-$env:MODE = "api"
-$env:WARMUP = '["tags", "keys"]'
-taggly
+```bash
+taggly start          # from the ../taggly venv or PATH
 ```
+
+**Docker alternative** — fully isolated, works on any machine with Docker:
+```bash
+docker build -t taggly ../taggly
+docker run --rm -p 8000:8000 \
+  -v $HOME/.cache/huggingface:/root/.cache/huggingface \
+  -e HF_TOKEN taggly
+```
+graphly detects a running server at `taggly_url` and skips spawning.
 
 
 ## Installation
