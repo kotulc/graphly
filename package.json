@@ -14,13 +14,13 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "graphly": "tsx src/main.ts"
+    "graphly": "tsx src/main.ts",
+    "postinstall": "node scripts/setup-taggly.cjs"
   },
   "license": "MIT",
   "dependencies": {
     "commander": "^15.0.0",
     "graphology": "^0.26.0",
-    "ml-kmeans": "^7.0.1",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },

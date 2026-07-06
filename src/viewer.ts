@@ -22,7 +22,6 @@ export function serve_viewer(graph_path: string, config: Config): Server {
     '/settings.json': ['application/json', () => JSON.stringify({
       show_edges: config.show_edges,
       color_by: config.color_by,
-      cluster_colors: config.cluster_colors,
     })],
   };
 
