@@ -1,6 +1,6 @@
 /**
- * Taggly client: HTTP calls for the tags, desc, keys, and rank commands against
- * a running Taggly API instance (graphly never installs or spawns Taggly).
+ * Taggly client: HTTP calls for the tags, desc, keys, rank, and score commands
+ * against a running Taggly API instance (graphly never installs or spawns Taggly).
  */
 
 
@@ -29,13 +29,14 @@ export class TagglyClient {
   }
 
   /**
-   * Extract typed tag groups from content, up to top_n per type.
-   * Returns the raw Dict[str, List[str]] groups: one key per concept category
-   * (concepts, entities, keywords, topics, …) plus a combined relevance-sorted
-   * 'ranked' or 'scored' list.
+   * Extract typed tag groups from content, up to top_n per type. concepts is a
+   * comma-separated list of categories to extract. Returns the raw
+   * Dict[str, List[str]] groups: one key per requested category (plus
+   * 'entities', 'keywords', and a combined relevance-sorted 'ranked'/'scored').
    */
-  async tags(content: string, top_n: number): Promise<Record<string, string[]>> {
-    const data = await this.post('tags', { content }, { top_n: String(top_n) });
+  async tags(content: string, top_n: number, concepts: string
+  ): Promise<Record<string, string[]>> {
+    const data = await this.post('tags', { content }, { top_n: String(top_n), concepts });
     return data.tags as Record<string, string[]>;
   }
 
@@ -55,6 +56,12 @@ export class TagglyClient {
   async rank(query: string, candidates: string[], top_n: number): Promise<string[]> {
     const data = await this.post('rank', { query, candidates }, { top_n: String(top_n) });
     return data.ranked as string[];
+  }
+
+  /** Score each candidate's semantic similarity to query (cosine, one score each). */
+  async score(query: string, candidates: string[]): Promise<number[]> {
+    const data = await this.post('score', { query, candidates });
+    return data.scores as number[];
   }
 }
 

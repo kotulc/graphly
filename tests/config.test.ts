@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { load_config } from '../src/config.js';
+import { config_schema, load_config } from '../src/config.js';
 
 
 const config_path = join(tmpdir(), 'graphly-test-config.yaml');
@@ -17,13 +17,16 @@ afterAll(() => rmSync(config_path, { force: true }));
 
 
 describe('load_config', () => {
-  it('applies defaults when no file or flags are given', () => {
-    const config = load_config();
-    expect(config.max_concepts).toBe(10);
-    expect(config.max_keys).toBe(20);
-    expect(config.max_topics).toBe(5);
-    expect(config.max_leaves).toBe(5);
+  it('applies schema defaults', () => {
+    const config = config_schema.parse({});
+    expect(config.concepts).toEqual(['concepts', 'entities']);
+    expect(config.max_concepts).toBe(16);
+    expect(config.max_keys).toBe(128);
+    expect(config.max_topics).toBe(8);
+    expect(config.max_leaves).toBe(32);
     expect(config.taggly_url).toBe('http://127.0.0.1:8000');
+    expect(config.show_edges).toBe(false);
+    expect(config.colormaps).toEqual(['YlOrBr']);
   });
 
   it('reads values from a YAML config file', () => {

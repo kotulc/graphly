@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- graphly viewer: minimal single-file sigma.js explorer for one graph file.
-     Settings (edge visibility, color mode) are config-driven and served by
+     Settings (edge visibility, colormaps) are config-driven and served by
      `graphly view` at /settings.json alongside /graph.json. -->
 <html>
 <head>
@@ -16,50 +16,117 @@
     #panel li { list-style: none; margin: 2px 0; }
     #panel ul { margin: 0; padding: 0; }
     .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 6px;
-              border-radius: 5px; vertical-align: baseline; }
+              border-radius: 5px; border: 1px solid #b8b2a7; vertical-align: baseline; }
   </style>
 </head>
 <body>
 <div id="app"></div>
 <div id="panel"></div>
-<script src="https://unpkg.com/graphology@0.26.0/dist/graphology.umd.min.js"></script>
-<script src="https://unpkg.com/graphology-library@0.8.0/dist/graphology-library.min.js"></script>
-<script src="https://unpkg.com/sigma@3.0.2/dist/sigma.min.js"></script>
-<script>
-  const PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#46f0f0',
-                   '#f032e6', '#bcf60c', '#008080', '#9a6324', '#800000', '#808000'];
+<script type="module">
+  import Graph from 'https://esm.sh/graphology@0.26.0';
+  import Sigma from 'https://esm.sh/sigma@3.0.2?deps=graphology@0.26.0';
+  import { color } from 'https://esm.sh/d3-color@3';
+  import * as chromatic from 'https://esm.sh/d3-scale-chromatic@3?deps=d3-color@3,d3-interpolate@3';
 
-  // Assign a palette color to each unique node category, sorted for stability
-  function type_colors(graph) {
-    const types = [...new Set(graph.mapNodes((_, a) => a.category))].sort();
-    const colors = {};
-    types.forEach((type, i) => { colors[type] = PALETTE[i % PALETTE.length]; });
-    return colors;
-  }
+  const ROOT_FILL = '#8a8378';
+  const GOLDEN = 2.39996;           // golden angle for spiral placement
 
-  // Style every node: label from key, size by node level, color by category
-  function style_nodes(graph, settings) {
-    const colors = type_colors(graph);
-    graph.forEachNode((node, attrs) => {
-      const size = attrs.category === 'topic' ? 16
-        : attrs.category === 'keyword' ? 4 + Math.min(8, graph.inDegree(node))
-        : 10;
-      graph.mergeNodeAttributes(node, {
-        label: attrs.key,
-        size,
-        color: colors[attrs.category] ?? '#444444',
-      });
+  // Build one color per concept from the configured d3-scale-chromatic schemes:
+  // sequential interpolators (YlOrBr, Oranges, …) are sampled evenly across the
+  // concept count; categorical schemes (Tableau10, Set2, …) are used as-is
+  function palette(colormaps, count) {
+    const per = Math.ceil(count / colormaps.length);
+    return colormaps.flatMap(name => {
+      const interpolate = chromatic['interpolate' + name];
+      if (interpolate) return Array.from({ length: per }, (_, i) =>
+        color(interpolate(0.3 + 0.7 * (per > 1 ? i / (per - 1) : 0.5))).formatHex());
+      return (chromatic['scheme' + name] ?? []).filter(c => typeof c === 'string');
     });
   }
 
-  // Side panel: node categories with color swatches
-  function render_panel(graph, settings) {
-    const colors = type_colors(graph);
-    const types = [...new Set(graph.mapNodes((_, a) => a.category))].sort();
+  // Assign each leaf to one parent concept via the concepts' children lists:
+  // the concept ranking the leaf earliest wins (first concept breaks ties)
+  function assign_parents(graph) {
+    const best_rank = {};
+    const parent_of = {};
+    graph.forEachNode((node, attrs) => {
+      if (['topic', 'keyword'].includes(attrs.category)) return;
+      (attrs.children ?? []).forEach((leaf, rank) => {
+        if (!(leaf in parent_of) || rank < best_rank[leaf])
+          { parent_of[leaf] = node; best_rank[leaf] = rank; }
+      });
+    });
+    return parent_of;
+  }
+
+  // Style every node: label from key, size from the node's document-coverage
+  // weight, and one flat color per cluster — each concept gets a unique palette
+  // color and every leaf its parent's exact color. Returns {concept: color}.
+  function style_nodes(graph, settings, parent_of) {
+    const concepts = graph.filterNodes(
+      (_, attrs) => !['topic', 'keyword'].includes(attrs.category));
+    const colors = palette(settings.colormaps, concepts.length);
+    const concept_color = {};
+    concepts.forEach((node, i) => { concept_color[node] = colors[i % colors.length]; });
+
+    graph.forEachNode((node, attrs) => {
+      const is_root = attrs.category === 'topic';
+      const fill = is_root ? ROOT_FILL
+        : concept_color[node] ?? concept_color[parent_of[node]] ?? '#8a8378';
+      graph.mergeNodeAttributes(node, {
+        label: attrs.key,
+        size: Math.min(24, 3 + 28 * Math.sqrt(attrs.weight ?? 0)),
+        color: fill,
+      });
+    });
+    return concept_color;
+  }
+
+  // Cloud layout, generic in the concept count: the root sits at the origin and
+  // concepts pack around it on a golden-angle spiral spaced by the typical
+  // cluster size, so clusters sit shoulder-to-shoulder as one compact cloud.
+  // Each leaf fills its parent's cluster disc on a golden-angle spiral.
+  function cluster_layout(graph, concept_color, parent_of) {
+    const concepts = Object.keys(concept_color);
+    const counts = {};
+    for (const parent of Object.values(parent_of))
+      if (parent) counts[parent] = (counts[parent] ?? 0) + 1;
+
+    // Cluster radius grows with leaf count; concept spacing with the mean radius
+    const radius = c => 0.6 * Math.sqrt(counts[c] ?? 1) + 0.6;
+    const mean_r = concepts.reduce((sum, c) => sum + radius(c), 0) / (concepts.length || 1);
+    const spread = 1.7 * mean_r;
+
+    graph.forEachNode((node, attrs) => {
+      if (attrs.category === 'topic') graph.mergeNodeAttributes(node, { x: 0, y: 0 });
+    });
+    concepts.forEach((node, i) => {
+      const angle = i * GOLDEN, r = spread * Math.sqrt(i + 1);
+      graph.mergeNodeAttributes(node,
+        { x: r * Math.cos(angle), y: r * Math.sin(angle) });
+    });
+
+    const rim = spread * Math.sqrt(concepts.length + 1) + mean_r;
+    const rank = {};
+    graph.forEachNode((node, attrs) => {
+      if (attrs.category !== 'keyword') return;
+      const parent = parent_of[node];
+      const k = (rank[parent ?? '#'] = (rank[parent ?? '#'] ?? 0) + 1);
+      const angle = k * GOLDEN;
+      const r = parent ? 0.4 + radius(parent) * Math.sqrt(k / (counts[parent] || 1)) : rim;
+      const [px, py] = parent
+        ? [graph.getNodeAttribute(parent, 'x'), graph.getNodeAttribute(parent, 'y')] : [0, 0];
+      graph.mergeNodeAttributes(node,
+        { x: px + r * Math.cos(angle), y: py + r * Math.sin(angle) });
+    });
+  }
+
+  // Side panel: concept color legend, one swatch per concept node
+  function render_panel(concept_color) {
+    const items = Object.entries(concept_color).map(([node, fill]) =>
+      `<li><span class="swatch" style="background:${fill}"></span>${node}</li>`);
     document.getElementById('panel').innerHTML =
-      `<h3>Categories</h3><ul>${types.map(t =>
-        `<li><span class="swatch" style="background:${colors[t]}"></span>${t}</li>`
-      ).join('')}</ul>`;
+      `<h3>Concepts</h3><ul>${items.join('')}</ul>`;
   }
 
   async function main() {
@@ -67,24 +134,23 @@
       fetch('/graph.json').then(response => response.json()),
       fetch('/settings.json').then(response => response.json()),
     ]);
-    const graph = graphology.Graph.from(graph_data);
+    const graph = Graph.from(graph_data);
 
-    style_nodes(graph, settings);
-    render_panel(graph, settings);
+    const parent_of = assign_parents(graph);
+    const concept_color = style_nodes(graph, settings, parent_of);
+    render_panel(concept_color);
     if (!settings.show_edges)
       graph.forEachEdge(edge => graph.setEdgeAttribute(edge, 'hidden', true));
 
-    // Spread nodes with a circular seed plus a short force-directed refinement
-    graphologyLibrary.layout.circular.assign(graph);
-    graphologyLibrary.layoutForceAtlas2.assign(graph, {
-      iterations: 200,
-      settings: graphologyLibrary.layoutForceAtlas2.inferSettings(graph),
-    });
+    cluster_layout(graph, concept_color, parent_of);
 
-    new Sigma(graph, document.getElementById('app'), { defaultEdgeColor: '#ccc' });
+    new Sigma(graph, document.getElementById('app'), { defaultEdgeColor: '#ddd' });
   }
 
-  main();
+  // Surface failures in the panel instead of leaving a silently blank page
+  main().catch(error => {
+    document.getElementById('panel').innerHTML = `<h3>Error</h3><p>${error.message}</p>`;
+  });
 </script>
 </body>
 </html>

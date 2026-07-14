@@ -1,10 +1,10 @@
 /**
- * Unit tests for surface form extraction.
+ * Unit tests for surface form extraction and coverage counting.
  */
 
 import { describe, expect, it } from 'vitest';
 
-import { find_forms } from '../src/ngrams.js';
+import { count_matches, count_words, find_forms } from '../src/ngrams.js';
 
 
 describe('find_forms', () => {
@@ -34,5 +34,27 @@ describe('find_forms', () => {
   it('deduplicates repeated identical forms', () => {
     const forms = find_forms('data', 'training data and test data and more data');
     expect(forms).toEqual(['data']);
+  });
+});
+
+
+describe('count_matches', () => {
+  it('counts every whole-word occurrence across case variants', () => {
+    expect(count_matches('data', 'training data and test Data and more data')).toBe(3);
+  });
+
+  it('returns zero when the keyword is not present', () => {
+    expect(count_matches('rocket', 'machine learning is useful')).toBe(0);
+  });
+});
+
+
+describe('count_words', () => {
+  it('counts whitespace-delimited words', () => {
+    expect(count_words('one two  three\nfour')).toBe(4);
+  });
+
+  it('returns zero for empty text', () => {
+    expect(count_words('')).toBe(0);
   });
 });

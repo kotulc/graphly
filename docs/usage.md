@@ -59,27 +59,40 @@ graphly view doc-graph.json
 
 ## Configuration
 
-All options can be set in a YAML config file (`--config path.yaml`) or as CLI flags.
-Flags take precedence over file values.
+All options can be set in a YAML config file or as CLI flags (flags take precedence).
+The repo root `config.yaml` lists every setting with its default value; graphly loads a
+`config.yaml` from the working directory automatically when no `--config` path is given.
+List settings (`concepts`, `colormaps`) can only be set in the config file.
 
 | Flag | Config key | Default | Description |
 |------|------------|---------|-------------|
 | `--output <path>` | `output` | `graph.json` | Output file path |
-| `--max-concepts <n>` | `max_concepts` | `10` | Maximum number of concept nodes |
-| `--max-keys <n>` | `max_keys` | `20` | Maximum number of leaf keyword nodes |
-| `--max-topics <n>` | `max_topics` | `5` | Maximum number of document topics |
-| `--max-leaves <n>` | `max_leaves` | `5` | Maximum leaf nodes per concept |
+| — | `concepts` | `[concepts, entities]` | Tag categories extracted as concept nodes (`topics` is always added for the root; `keywords` is reserved for leaves) |
+| `--max-concepts <n>` | `max_concepts` | `16` | Maximum number of concept nodes |
+| `--max-keys <n>` | `max_keys` | `128` | Maximum number of leaf keyword nodes |
+| `--max-topics <n>` | `max_topics` | `8` | Maximum number of document topics |
+| `--max-leaves <n>` | `max_leaves` | `32` | Maximum leaf nodes per concept |
 | `--taggly-url <url>` | `taggly_url` | `http://127.0.0.1:8000` | Running Taggly API instance (`http://<host>:<port>`) |
+| `--port <n>` | `port` | `3000` | Viewer server port |
+| `--show-edges` | `show_edges` | `false` | Show edges in the viewer (hidden by default) |
+| — | `colormaps` | `[YlOrBr]` | d3-scale-chromatic schemes for concept colors |
 
 Example `config.yaml`:
 
 ```yaml
 output: doc-graph.json
+concepts: [concepts, entities]
 max_concepts: 8
-max_keys: 30
-max_leaves: 5
+max_keys: 64
+max_leaves: 16
 taggly_url: http://127.0.0.1:8000
+show_edges: false
+colormaps: [YlOrBr]
 ```
+
+The `concepts` categories are passed straight to Taggly's `tags` command, so any category
+its `ext` extraction understands can be used (e.g. `[people, organizations]`); each concept
+node's `category` attribute records the category it was extracted as.
 
 
 ## Output
@@ -95,32 +108,57 @@ topic root → concepts → leaves.
 - `description`: generated natural-language description
 - `topics`: ranked topic list
 - `children`: list of concept node keys
+- `weight`: fraction of document words covered by all leaf keywords — always the greatest
+  weight in the graph
 
-**Concept nodes** (`category: concept`, up to `max_concepts`):
-- `key`: concept label (entity, keyword, or other concept from Taggly `tags`)
+**Concept nodes** (up to `max_concepts`):
+- `key`: concept label
+- `category`: the tag category the concept was extracted as (one of the configured
+  `concepts`, e.g. `entities`)
 - `children`: list of leaf node keys (up to `max_leaves`)
+- `weight`: sum of its children's coverage weights
 
-**Leaf nodes** (`category: keyword`, up to `max_keys` total):
+**Leaf nodes** (`category: keyword`, up to `max_keys` total — the `keyword` category is
+reserved for leaves):
 - `key`: keyword or n-gram phrase extracted directly from the document
 - `forms`: unique surface form variants found in the document text
+- `count`: total whole-word occurrences of the keyword in the document
+- `weight`: document coverage — `count × words in phrase / total document words`
 - `children`: `[]`
 
-**Edges** (`category: contains`): every edge is a directed hierarchy edge mirroring the
-source node's `children` attribute — root→concept for each concept node, and concept→leaf
-for each of the concept's top `max_leaves` most relevant keywords. A leaf shared by several
-concepts receives one incoming edge from each, so graphs typically have more edges than
-nodes; keyword candidates that rank into no concept's children are dropped from the graph.
+Node `weight` measures how representative the node is of the document: leaves cover a
+fraction of the document's words, concepts sum their children, and the root sums every
+unique leaf (the share of the document covered by all extracted keywords).
+
+**Edges** (`category: contains`): only root→concept edges are written, one per concept.
+Each carries a `weight`: the concept's semantic similarity to the root topics +
+description (Taggly `score`, 0–1). Concept→leaf membership is expressed by the concepts'
+`children` lists rather than edges — a keyword relevant to several concepts appears in
+each of their `children`. Keyword candidates that rank into no concept's children are
+dropped from the graph.
 
 
 ## Viewer
 
 ```bash
-graphly view graph.json [--port 3000] [--color-by category] [--hide-edges]
+graphly view graph.json [--port 3000] [--show-edges]
 ```
 
-Serves a single-page Sigma.js explorer (no build step; libraries load from CDN).
-Node size reflects the node level (root largest, leaves smallest). The side panel
-lists all node categories with their assigned palette color.
+Serves a single-page Sigma.js explorer (no build step; libraries load from CDN as ES
+modules). Node size reflects the node level (root largest, leaves smallest). Edges are
+hidden by default; pass `--show-edges` (or set `show_edges: true`) to display them.
 
-- `color_by: category` (default) colors each node category distinctly
-- `show_edges: false` (or `--hide-edges`) hides all edges
+Layout: a cloud layout places the root at the center and packs concepts around it on a
+golden-angle spiral, spaced by the typical cluster size (each cluster's radius grows with
+its leaf count). Each leaf fills its parent's cluster disc on a golden-angle spiral, so
+clusters sit shoulder-to-shoulder as one compact cloud for any concept count. A leaf
+listed by several concepts clusters with the concept that ranks it highest.
+
+Coloring and size: each concept is assigned a unique color from the configured
+`colormaps` — schemes from [d3-scale-chromatic](https://d3js.org/d3-scale-chromatic):
+sequential interpolators (`YlOrBr`, `Oranges`, `BuGn`, `Greys`, …) are sampled evenly
+across the concept count; categorical schemes (`Tableau10`, `Set2`, `Dark2`, …) are used
+as-is. Every leaf takes its parent concept's exact color, so each cluster reads as one
+solid hue. Node size scales with the node's coverage `weight` — the root is largest and
+rarely occurring keywords are smallest. The side panel lists every concept with its color
+swatch.

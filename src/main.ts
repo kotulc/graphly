@@ -39,8 +39,7 @@ program.command('view <graph-file>')
   .description('launch the graph viewer for a graph JSON file')
   .option('--config <path>', 'path to YAML config file')
   .option('--port <n>', 'viewer server port')
-  .option('--color-by <mode>', "color nodes by 'category' or 'weight'")
-  .option('--hide-edges', 'hide all edges')
+  .option('--show-edges', 'show edges (hidden by default)')
   .action((graph_file, options) => {
     const config = load_config(options.config, flags_from(options));
     serve_viewer(graph_file, config);
@@ -64,7 +63,6 @@ function flags_from(options: Record<string, string | boolean | undefined>): Part
     max_leaves: number_or(options.maxLeaves),
     taggly_url: options.tagglyUrl as string | undefined,
     port: number_or(options.port),
-    color_by: options.colorBy as Config['color_by'] | undefined,
-    show_edges: options.hideEdges ? false : undefined,
+    show_edges: options.showEdges ? true : undefined,
   };
 }

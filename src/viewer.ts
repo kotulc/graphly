@@ -21,14 +21,15 @@ export function serve_viewer(graph_path: string, config: Config): Server {
     '/graph.json': ['application/json', () => readFileSync(graph_path)],
     '/settings.json': ['application/json', () => JSON.stringify({
       show_edges: config.show_edges,
-      color_by: config.color_by,
+      colormaps: config.colormaps,
     })],
   };
 
   const server = createServer((request, response) => {
     const route = routes[request.url ?? ''];
     if (!route) return void response.writeHead(404).end();
-    response.writeHead(200, { 'Content-Type': route[0] }).end(route[1]());
+    response.writeHead(200, { 'Content-Type': route[0], 'Cache-Control': 'no-store' })
+      .end(route[1]());
   });
 
   server.on('error', (error: NodeJS.ErrnoException) => {
