@@ -1,6 +1,5 @@
 /**
- * Unit tests for the Taggly client: HTTP commands (mocked fetch) and the
- * string-to-typed tag compatibility shim.
+ * Unit tests for the Taggly client: HTTP commands against a mocked fetch.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -20,54 +19,19 @@ afterEach(() => vi.unstubAllGlobals());
 
 
 describe('tags', () => {
-  it('parses typed dict response into tag objects in ranked order', async () => {
-    const mock = mock_fetch({
-      tags: {
-        entities: ['Acme Corp'],
-        keywords: ['machine learning'],
-        ranked: ['machine learning', 'Acme Corp'],
-      },
-    });
+  it('posts content with top_n and returns the typed group dict', async () => {
+    const groups = {
+      entities: ['Acme Corp'],
+      keywords: ['machine learning'],
+      topics: ['AI'],
+      ranked: ['machine learning', 'Acme Corp', 'AI'],
+    };
+    const mock = mock_fetch({ tags: groups });
     const result = await client.tags('some text', 5);
-    expect(result).toEqual([
-      { key: 'machine learning', type: 'keyword' },
-      { key: 'Acme Corp', type: 'entity' },
-    ]);
+    expect(result).toEqual(groups);
     const [url, options] = mock.mock.calls[0];
     expect(url).toContain('tags?top_n=5');
     expect(JSON.parse(options.body)).toEqual({ content: 'some text' });
-  });
-
-  it('uses scored order when no ranked list is present', async () => {
-    mock_fetch({
-      tags: {
-        entities: ['Acme Corp'],
-        keywords: ['machine learning'],
-        scored: ['Acme Corp', 'machine learning'],
-      },
-    });
-    const result = await client.tags('some text', 5);
-    expect(result[0]).toEqual({ key: 'Acme Corp', type: 'entity' });
-  });
-
-  it('caps results at top_n', async () => {
-    mock_fetch({
-      tags: {
-        keywords: ['a', 'b', 'c'],
-        ranked: ['a', 'b', 'c'],
-      },
-    });
-    const result = await client.tags('some text', 2);
-    expect(result.length).toBe(2);
-  });
-
-  it('falls back to legacy plain string array by assigning type keyword', async () => {
-    mock_fetch({ tags: ['alpha', 'beta'] });
-    const result = await client.tags('some text', 5);
-    expect(result).toEqual([
-      { key: 'alpha', type: 'keyword' },
-      { key: 'beta', type: 'keyword' },
-    ]);
   });
 
   it('throws on a failed response', async () => {
@@ -81,17 +45,6 @@ describe('desc', () => {
   it('posts content and returns the description string', async () => {
     mock_fetch({ description: 'A text about AI.' });
     expect(await client.desc('some text')).toBe('A text about AI.');
-  });
-});
-
-
-describe('topics', () => {
-  it('posts documents array and returns topics list', async () => {
-    const mock = mock_fetch({ topics: ['machine learning', 'AI'] });
-    const result = await client.topics(['desc text', 'tag1, tag2', 'full doc'], 3);
-    expect(result).toEqual(['machine learning', 'AI']);
-    const call_body = JSON.parse(mock.mock.calls[0][1].body);
-    expect(call_body.documents).toHaveLength(3);
   });
 });
 

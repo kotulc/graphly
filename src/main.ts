@@ -19,32 +19,27 @@ const program = new Command('graphly')
 program.argument('<input>', 'text document to graph')
   .option('--config <path>', 'path to YAML config file')
   .option('--output <path>', 'output file path')
-  .option('--max-tags <n>', 'maximum number of tag nodes')
+  .option('--max-concepts <n>', 'maximum number of concept nodes')
   .option('--max-keys <n>', 'maximum number of leaf keyword nodes')
   .option('--max-topics <n>', 'maximum number of document topics')
-  .option('--max-leaves <n>', 'maximum leaf nodes per tag')
-  .option('--taggly-url <url>', 'already running taggly api instance')
+  .option('--max-leaves <n>', 'maximum leaf nodes per concept')
+  .option('--taggly-url <url>', 'running taggly api instance (http://<host>:<port>)')
   .action(async (input, options) => {
     const config = load_config(options.config, flags_from(options));
     const text = readFileSync(input, 'utf8');
-    const session = await connect_taggly(config.taggly_url);
-    process.once('SIGINT', () => { session.stop(); process.exit(130); });
+    const client = await connect_taggly(config.taggly_url);
 
-    try {
-      const graph = await generate_graph(text, input, config, session.client);
-      writeFileSync(config.output, JSON.stringify(graph, null, 2));
-      console.log(`wrote ${graph.nodes!.length} nodes and ${graph.edges!.length} edges`
-                  + ` to ${config.output}`);
-    } finally {
-      session.stop();
-    }
+    const graph = await generate_graph(text, input, config, client);
+    writeFileSync(config.output, JSON.stringify(graph, null, 2));
+    console.log(`wrote ${graph.nodes!.length} nodes and ${graph.edges!.length} edges`
+                + ` to ${config.output}`);
   });
 
 program.command('view <graph-file>')
   .description('launch the graph viewer for a graph JSON file')
   .option('--config <path>', 'path to YAML config file')
   .option('--port <n>', 'viewer server port')
-  .option('--color-by <mode>', "color nodes by 'type' or 'weight'")
+  .option('--color-by <mode>', "color nodes by 'category' or 'weight'")
   .option('--hide-edges', 'hide all edges')
   .action((graph_file, options) => {
     const config = load_config(options.config, flags_from(options));
@@ -63,7 +58,7 @@ function flags_from(options: Record<string, string | boolean | undefined>): Part
   const number_or = (value: unknown) => value === undefined ? undefined : Number(value);
   return {
     output: options.output as string | undefined,
-    max_tags: number_or(options.maxTags),
+    max_concepts: number_or(options.maxConcepts),
     max_keys: number_or(options.maxKeys),
     max_topics: number_or(options.maxTopics),
     max_leaves: number_or(options.maxLeaves),

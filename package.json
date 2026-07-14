@@ -14,8 +14,7 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "graphly": "tsx src/main.ts",
-    "postinstall": "node scripts/setup-taggly.cjs"
+    "graphly": "tsx src/main.ts"
   },
   "license": "MIT",
   "dependencies": {

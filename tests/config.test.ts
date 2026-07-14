@@ -11,7 +11,7 @@ import { load_config } from '../src/config.js';
 
 
 const config_path = join(tmpdir(), 'graphly-test-config.yaml');
-writeFileSync(config_path, 'max_tags: 4\noutput: out.json\n');
+writeFileSync(config_path, 'max_concepts: 4\noutput: out.json\n');
 
 afterAll(() => rmSync(config_path, { force: true }));
 
@@ -19,7 +19,7 @@ afterAll(() => rmSync(config_path, { force: true }));
 describe('load_config', () => {
   it('applies defaults when no file or flags are given', () => {
     const config = load_config();
-    expect(config.max_tags).toBe(10);
+    expect(config.max_concepts).toBe(10);
     expect(config.max_keys).toBe(20);
     expect(config.max_topics).toBe(5);
     expect(config.max_leaves).toBe(5);
@@ -28,24 +28,24 @@ describe('load_config', () => {
 
   it('reads values from a YAML config file', () => {
     const config = load_config(config_path);
-    expect(config.max_tags).toBe(4);
+    expect(config.max_concepts).toBe(4);
     expect(config.output).toBe('out.json');
   });
 
   it('prefers flag overrides to config file values', () => {
-    const config = load_config(config_path, { max_tags: 2, max_leaves: 3 });
-    expect(config.max_tags).toBe(2);
+    const config = load_config(config_path, { max_concepts: 2, max_leaves: 3 });
+    expect(config.max_concepts).toBe(2);
     expect(config.max_leaves).toBe(3);
     expect(config.output).toBe('out.json');
   });
 
   it('ignores undefined flag overrides', () => {
-    const config = load_config(config_path, { max_tags: undefined });
-    expect(config.max_tags).toBe(4);
+    const config = load_config(config_path, { max_concepts: undefined });
+    expect(config.max_concepts).toBe(4);
   });
 
   it('rejects out-of-range values', () => {
-    expect(() => load_config(undefined, { max_tags: 0 })).toThrow();
+    expect(() => load_config(undefined, { max_concepts: 0 })).toThrow();
     expect(() => load_config(undefined, { max_keys: -1 })).toThrow();
   });
 });

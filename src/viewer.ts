@@ -30,5 +30,12 @@ export function serve_viewer(graph_path: string, config: Config): Server {
     if (!route) return void response.writeHead(404).end();
     response.writeHead(200, { 'Content-Type': route[0] }).end(route[1]());
   });
+
+  server.on('error', (error: NodeJS.ErrnoException) => {
+    console.error(error.code === 'EADDRINUSE'
+      ? `error: port ${config.port} is already in use — choose another with --port`
+      : `error: ${error.message}`);
+    process.exit(1);
+  });
   return server.listen(config.port);
 }

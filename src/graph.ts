@@ -1,59 +1,60 @@
 /**
- * Graph assembly: builds the Graphology document graph (doc, tag, leaf nodes
- * with hierarchy edges). Nodes are inserted in export order: doc → tags → leaves.
+ * Graph assembly: builds the Graphology document graph (topic root, concept,
+ * and keyword leaf nodes with hierarchy edges). Nodes are inserted in export
+ * order: root → concepts → leaves. Node kinds are stored under 'category'
+ * ('type' is reserved by Sigma for its render programs).
  */
 
 import { MultiGraph } from 'graphology';
 
-import { Tag } from './taggly.js';
-
 
 /**
  * Build the document graph and return the assembled Graphology instance.
- * Doc node ID is '#doc'; tag and leaf node IDs are their key strings.
- * Each node's 'children' attribute lists the Graphology IDs of its children.
+ * Root node ID is '#topic' (the '#' prefix cannot collide with tag strings);
+ * concept and leaf node IDs are their key strings. Each node's 'children'
+ * attribute lists the Graphology IDs of its children.
  */
 export function build_graph(
   doc_key: string,
   description: string,
   topics: string[],
-  tags: Tag[],
-  leaves_by_tag: Map<string, string[]>,
+  concepts: string[],
+  leaves_by_concept: Map<string, string[]>,
   forms_by_leaf: Map<string, string[]>,
 ): MultiGraph {
   const graph = new MultiGraph();
 
-  graph.addNode('#doc', {
+  graph.addNode('#topic', {
     key: doc_key,
-    type: 'doc',
+    category: 'topic',
     label: topics[0] ?? doc_key,
     description,
     topics,
-    children: tags.map(t => t.key),
+    children: concepts,
   });
 
-  for (const tag of tags) {
-    const children = leaves_by_tag.get(tag.key) ?? [];
-    if (!graph.hasNode(tag.key))
-      graph.addNode(tag.key, { key: tag.key, type: tag.type, children });
-    graph.addDirectedEdge('#doc', tag.key, { type: 'contains' });
+  for (const concept of concepts) {
+    const children = leaves_by_concept.get(concept) ?? [];
+    if (!graph.hasNode(concept))
+      graph.addNode(concept, { key: concept, category: 'concept', children });
+    graph.addDirectedEdge('#topic', concept, { category: 'contains' });
   }
 
   const seen = new Set<string>();
-  for (const tag of tags) {
-    for (const leaf of (leaves_by_tag.get(tag.key) ?? [])) {
+  for (const concept of concepts) {
+    for (const leaf of (leaves_by_concept.get(concept) ?? [])) {
       if (!seen.has(leaf)) {
         if (!graph.hasNode(leaf))
           graph.addNode(leaf, {
             key: leaf,
-            type: 'keyword',
+            category: 'keyword',
             forms: forms_by_leaf.get(leaf) ?? [],
             children: [],
           });
         seen.add(leaf);
       }
-      if (leaf !== tag.key)
-        graph.addDirectedEdge(tag.key, leaf, { type: 'contains' });
+      if (leaf !== concept)
+        graph.addDirectedEdge(concept, leaf, { category: 'contains' });
     }
   }
 

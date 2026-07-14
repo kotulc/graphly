@@ -29,33 +29,33 @@
   const PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#46f0f0',
                    '#f032e6', '#bcf60c', '#008080', '#9a6324', '#800000', '#808000'];
 
-  // Assign a palette color to each unique node type, sorted for stability
+  // Assign a palette color to each unique node category, sorted for stability
   function type_colors(graph) {
-    const types = [...new Set(graph.mapNodes((_, a) => a.type))].sort();
+    const types = [...new Set(graph.mapNodes((_, a) => a.category))].sort();
     const colors = {};
     types.forEach((type, i) => { colors[type] = PALETTE[i % PALETTE.length]; });
     return colors;
   }
 
-  // Style every node: label from key, size by node level, color by type
+  // Style every node: label from key, size by node level, color by category
   function style_nodes(graph, settings) {
     const colors = type_colors(graph);
     graph.forEachNode((node, attrs) => {
-      const size = attrs.type === 'doc' ? 16
-        : attrs.type === 'keyword' ? 4 + Math.min(8, graph.inDegree(node))
+      const size = attrs.category === 'topic' ? 16
+        : attrs.category === 'keyword' ? 4 + Math.min(8, graph.inDegree(node))
         : 10;
       graph.mergeNodeAttributes(node, {
         label: attrs.key,
         size,
-        color: colors[attrs.type] ?? '#444444',
+        color: colors[attrs.category] ?? '#444444',
       });
     });
   }
 
-  // Side panel: tag type categories with color swatches
+  // Side panel: node categories with color swatches
   function render_panel(graph, settings) {
     const colors = type_colors(graph);
-    const types = [...new Set(graph.mapNodes((_, a) => a.type))].sort();
+    const types = [...new Set(graph.mapNodes((_, a) => a.category))].sort();
     document.getElementById('panel').innerHTML =
       `<h3>Categories</h3><ul>${types.map(t =>
         `<li><span class="swatch" style="background:${colors[t]}"></span>${t}</li>`
