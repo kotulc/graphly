@@ -25,21 +25,39 @@
 <script type="module">
   import Graph from 'https://esm.sh/graphology@0.26.0';
   import Sigma from 'https://esm.sh/sigma@3.0.2?deps=graphology@0.26.0';
-  import { color } from 'https://esm.sh/d3-color@3';
+  import { color, lab } from 'https://esm.sh/d3-color@3';
   import * as chromatic from 'https://esm.sh/d3-scale-chromatic@3?deps=d3-color@3,d3-interpolate@3';
 
   const ROOT_FILL = '#8a8378';
   const GOLDEN = 2.39996;           // golden angle for spiral placement
+  const CYCLICAL = new Set(['Rainbow', 'Sinebow']);
 
-  // Build one color per concept from the configured d3-scale-chromatic schemes:
-  // sequential interpolators (YlOrBr, Oranges, …) are sampled evenly across the
-  // concept count; categorical schemes (Tableau10, Set2, …) are used as-is
+  // Usable sub-range of a sequential interpolator: trim ends too pale to see
+  // on a white background (CIELAB lightness above 90)
+  function usable_range(interpolate) {
+    const steps = Array.from({ length: 21 }, (_, i) => i / 20);
+    const visible = steps.filter(t => lab(interpolate(t)).l <= 90);
+    return visible.length ? [visible[0], visible[visible.length - 1]] : [0, 1];
+  }
+
+  // Build one color per concept from the configured d3-scale-chromatic schemes
+  // (the interpolate/scheme prefix is optional): interpolators — sequential
+  // (YlOrBr, Plasma, Viridis, …) or cyclical (Rainbow, Sinebow) — are sampled
+  // evenly across the concept count; categorical schemes (Tableau10, Set2, …)
+  // are used as-is
   function palette(colormaps, count) {
     const per = Math.ceil(count / colormaps.length);
-    return colormaps.flatMap(name => {
+    return colormaps.flatMap(raw => {
+      const name = raw.replace(/^(interpolate|scheme)/, '');
       const interpolate = chromatic['interpolate' + name];
-      if (interpolate) return Array.from({ length: per }, (_, i) =>
-        color(interpolate(0.3 + 0.7 * (per > 1 ? i / (per - 1) : 0.5))).formatHex());
+      if (interpolate && CYCLICAL.has(name))  // endpoints coincide: sample i/per
+        return Array.from({ length: per },
+          (_, i) => color(interpolate(i / per)).formatHex());
+      if (interpolate) {
+        const [lo, hi] = usable_range(interpolate);
+        return Array.from({ length: per },
+          (_, i) => color(interpolate(lo + (hi - lo) * ((i + 0.5) / per))).formatHex());
+      }
       return (chromatic['scheme' + name] ?? []).filter(c => typeof c === 'string');
     });
   }

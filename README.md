@@ -176,10 +176,12 @@ Features:
 - Edges are hidden by default (`--show-edges` to display the root→concept edges)
 - The side panel lists every concept with its color swatch
 
-Colormaps are schemes from [d3-scale-chromatic](https://d3js.org/d3-scale-chromatic):
-sequential interpolators (`YlOrBr`, `Oranges`, `BuGn`, `Greys`, …) are sampled evenly
-across the concept count, while categorical schemes (`Tableau10`, `Set2`, `Dark2`, …) are
-used as-is. Listing several schemes splits the concepts between them.
+Colormaps are schemes from [d3-scale-chromatic](https://d3js.org/d3-scale-chromatic), by
+name with the `interpolate`/`scheme` prefix optional. Interpolators — sequential
+(`YlOrBr`, `Plasma`, `Viridis`, `Turbo`, …) or cyclical (`Rainbow`, `Sinebow`) — are
+sampled evenly across the concept count (sequential ramps are auto-trimmed of ends too
+pale to see), while categorical schemes (`Tableau10`, `Set2`, `Dark2`, …) are used as-is.
+Listing several schemes splits the concepts between them.
 
 The viewer is based on the [sigma.js demo](https://github.com/jacomyal/sigma.js/tree/main/packages/demo).
 

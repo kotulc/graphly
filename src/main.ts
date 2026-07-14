@@ -41,7 +41,9 @@ program.command('view <graph-file>')
   .option('--port <n>', 'viewer server port')
   .option('--show-edges', 'show edges (hidden by default)')
   .action((graph_file, options) => {
-    const config = load_config(options.config, flags_from(options));
+    // The root command claims --config when given before/after the subcommand
+    const config_path = options.config ?? program.opts().config;
+    const config = load_config(config_path, flags_from(options));
     serve_viewer(graph_file, config);
     console.log(`viewing ${graph_file} at http://127.0.0.1:${config.port} (ctrl-c to stop)`);
   });

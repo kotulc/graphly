@@ -12,9 +12,9 @@ max_leaves: 64                    # maximum leaf nodes per concept
 taggly_url: http://127.0.0.1:8000 # running Taggly API instance (http://<host>:<port>)
 
 # Viewer
-port: 3000                        # viewer server port
+port: 3001                        # viewer server port
 show_edges: true                  # edges are hidden by default
-colormaps: [YlOrBr]               # d3-scale-chromatic schemes assigned to concept nodes:
-                                  # sequential (YlOrBr, Oranges, BuGn, ...) are sampled
-                                  # evenly; categorical (Tableau10, Set2, ...) used as-is
-                                  # concept nodes, e.g. Category10, Set2, Dark2, Paired
+colormaps: [interpolatePlasma]    # d3-scale-chromatic schemes assigned to concept nodes:
+                                  # sequential (YlOrBr, Plasma, Viridis, ...) and cyclical
+                                  # (Rainbow, Sinebow) interpolators are sampled evenly;
+                                  # categorical (Tableau10, Set2, ...) are used as-is

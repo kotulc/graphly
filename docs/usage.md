@@ -155,10 +155,13 @@ clusters sit shoulder-to-shoulder as one compact cloud for any concept count. A 
 listed by several concepts clusters with the concept that ranks it highest.
 
 Coloring and size: each concept is assigned a unique color from the configured
-`colormaps` — schemes from [d3-scale-chromatic](https://d3js.org/d3-scale-chromatic):
-sequential interpolators (`YlOrBr`, `Oranges`, `BuGn`, `Greys`, …) are sampled evenly
-across the concept count; categorical schemes (`Tableau10`, `Set2`, `Dark2`, …) are used
-as-is. Every leaf takes its parent concept's exact color, so each cluster reads as one
+`colormaps` — schemes from [d3-scale-chromatic](https://d3js.org/d3-scale-chromatic),
+named with the `interpolate`/`scheme` prefix optional. Interpolators — sequential
+(`YlOrBr`, `Plasma`, `Viridis`, `Turbo`, …) or cyclical (`Rainbow`, `Sinebow`) — are
+sampled evenly across the concept count; sequential ramps are automatically trimmed of
+ends too pale to see on a white background, and cyclical maps are sampled so their
+coinciding endpoints never repeat. Categorical schemes (`Tableau10`, `Set2`, `Dark2`, …)
+are used as-is. Every leaf takes its parent concept's exact color, so each cluster reads as one
 solid hue. Node size scales with the node's coverage `weight` — the root is largest and
 rarely occurring keywords are smallest. The side panel lists every concept with its color
 swatch.
