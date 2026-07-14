@@ -104,6 +104,18 @@ Each node carries a `children` attribute listing the keys of its direct children
 | `forms` | Unique surface form variants found in the document text |
 | `children` | `[]` (always empty) |
 
+**Edges** — every edge is a directed hierarchy edge with `category: "contains"`, mirroring
+the `children` attribute of its source node:
+
+| Edge | Meaning |
+|------|---------|
+| root → concept | The document topic contains each concept (one edge per concept node) |
+| concept → leaf | The concept's top `max_leaves` most relevant keywords (one edge per child) |
+
+Leaves are shared: a keyword relevant to several concepts receives one incoming edge from
+each, so graphs typically have more edges than nodes. Keyword candidates that do not rank
+into any concept's children are dropped, so the leaf count can be below `max_keys`.
+
 
 ## Pipeline
 

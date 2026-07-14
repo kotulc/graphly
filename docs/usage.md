@@ -105,7 +105,11 @@ topic root → concepts → leaves.
 - `forms`: unique surface form variants found in the document text
 - `children`: `[]`
 
-`contains` hierarchy edges (root→concept, concept→leaf) are always written.
+**Edges** (`category: contains`): every edge is a directed hierarchy edge mirroring the
+source node's `children` attribute — root→concept for each concept node, and concept→leaf
+for each of the concept's top `max_leaves` most relevant keywords. A leaf shared by several
+concepts receives one incoming edge from each, so graphs typically have more edges than
+nodes; keyword candidates that rank into no concept's children are dropped from the graph.
 
 
 ## Viewer

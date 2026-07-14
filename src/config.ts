@@ -10,10 +10,10 @@ import { z } from 'zod';
 
 export const config_schema = z.object({
   output: z.string().default('graph.json'),
-  max_concepts: z.number().int().positive().default(10),
-  max_keys: z.number().int().positive().default(20),
-  max_topics: z.number().int().positive().default(5),
-  max_leaves: z.number().int().positive().default(5),
+  max_concepts: z.number().int().positive().default(16),
+  max_keys: z.number().int().positive().default(128),
+  max_topics: z.number().int().positive().default(8),
+  max_leaves: z.number().int().positive().default(32),
   taggly_url: z.url().default('http://127.0.0.1:8000'),
   show_edges: z.boolean().default(true),
   color_by: z.enum(['category', 'weight']).default('category'),
