@@ -24,7 +24,7 @@ class StubClient extends TagglyClient {
   async desc(_content: string): Promise<string> {
     return 'A document about AI and rockets.';
   }
-  async keys(_content: string, top_n: number): Promise<string[]> {
+  async keys(_content: string, top_n: number, _ngram_max: number): Promise<string[]> {
     return ['neural network', 'training data', 'launch site', 'rocket engine'].slice(0, top_n);
   }
   async rank(_query: string, candidates: string[], top_n: number): Promise<string[]> {

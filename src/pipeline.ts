@@ -50,7 +50,7 @@ export async function generate_graph(
     ({ key, category: category_of.get(key)!, similarity: similarities[i] ?? 0 }));
 
   // 5. Extract keyword candidates and rank by relevance to topics + description
-  const candidates = await client.keys(text, config.max_keys * 2);
+  const candidates = await client.keys(text, config.max_keys * 2, config.max_ngram);
   const leaves = await client.rank(query, candidates, config.max_keys);
 
   // 6. Per concept: rank leaves for relevance and assign the top max_leaves as children

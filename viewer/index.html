@@ -100,42 +100,43 @@
     return concept_color;
   }
 
-  // Cloud layout, generic in the concept count: the root sits at the origin and
-  // concepts pack around it on a golden-angle spiral spaced by the typical
-  // cluster size, so clusters sit shoulder-to-shoulder as one compact cloud.
-  // Each leaf fills its parent's cluster disc on a golden-angle spiral.
+  // Petal layout, generic in the concept count: concepts cluster tightly around
+  // the root on a small ring, and each concept's leaves fan outward inside the
+  // concept's angular wedge — clusters stay behind their parent for any count.
   function cluster_layout(graph, concept_color, parent_of) {
     const concepts = Object.keys(concept_color);
+    const n = concepts.length || 1;
+    const wedge = 2 * Math.PI / n;
+    const ring = Math.max(2, 0.22 * n);  // concepts shoulder-to-shoulder near the root
+
     const counts = {};
     for (const parent of Object.values(parent_of))
       if (parent) counts[parent] = (counts[parent] ?? 0) + 1;
-
-    // Cluster radius grows with leaf count; concept spacing with the mean radius
-    const radius = c => 0.6 * Math.sqrt(counts[c] ?? 1) + 0.6;
-    const mean_r = concepts.reduce((sum, c) => sum + radius(c), 0) / (concepts.length || 1);
-    const spread = 1.7 * mean_r;
+    const max_count = Math.max(1, ...Object.values(counts));
+    const rim = ring + 1.6 + 0.55 * Math.sqrt(max_count);
 
     graph.forEachNode((node, attrs) => {
       if (attrs.category === 'topic') graph.mergeNodeAttributes(node, { x: 0, y: 0 });
     });
+    const angle_of = {};
     concepts.forEach((node, i) => {
-      const angle = i * GOLDEN, r = spread * Math.sqrt(i + 1);
+      const angle = (angle_of[node] = i * wedge);
       graph.mergeNodeAttributes(node,
-        { x: r * Math.cos(angle), y: r * Math.sin(angle) });
+        { x: ring * Math.cos(angle), y: ring * Math.sin(angle) });
     });
 
-    const rim = spread * Math.sqrt(concepts.length + 1) + mean_r;
+    // Leaves spread outward from the ring, jittered across their parent's wedge
+    // with a golden-ratio sequence (orphans land past the outer rim)
     const rank = {};
     graph.forEachNode((node, attrs) => {
       if (attrs.category !== 'keyword') return;
       const parent = parent_of[node];
       const k = (rank[parent ?? '#'] = (rank[parent ?? '#'] ?? 0) + 1);
-      const angle = k * GOLDEN;
-      const r = parent ? 0.4 + radius(parent) * Math.sqrt(k / (counts[parent] || 1)) : rim;
-      const [px, py] = parent
-        ? [graph.getNodeAttribute(parent, 'x'), graph.getNodeAttribute(parent, 'y')] : [0, 0];
+      const jitter = ((k * 0.618034) % 1) - 0.5;
+      const angle = parent ? angle_of[parent] + wedge * 0.85 * jitter : k * GOLDEN;
+      const r = parent ? ring + 0.8 + 0.55 * Math.sqrt(k) : rim;
       graph.mergeNodeAttributes(node,
-        { x: px + r * Math.cos(angle), y: py + r * Math.sin(angle) });
+        { x: r * Math.cos(angle), y: r * Math.sin(angle) });
     });
   }
 
@@ -162,7 +163,12 @@
 
     cluster_layout(graph, concept_color, parent_of);
 
-    new Sigma(graph, document.getElementById('app'), { defaultEdgeColor: '#ddd' });
+    new Sigma(graph, document.getElementById('app'), {
+      defaultEdgeColor: '#ddd',
+      labelRenderedSizeThreshold: 2,  // label small leaf nodes even when zoomed out
+      labelDensity: 2,
+      labelGridCellSize: 80,
+    });
   }
 
   // Surface failures in the panel instead of leaving a silently blank page

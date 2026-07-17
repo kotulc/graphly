@@ -47,17 +47,15 @@ docker run --rm -p 8000:8000 \
 # Start (or have running) a Taggly API instance, e.g. in a separate terminal
 taggly start
 
-# Generate a graph (uses the Taggly API at http://127.0.0.1:8000 by default)
+# Generate a graph (settings come from ./config.yaml; edit it to change limits,
+# the output path, or the Taggly instance's host and port)
 graphly document.md
 
-# Point graphly at a remote Taggly instance by host and port
-graphly document.md --taggly-url http://192.168.1.20:8000
-
-# Generate with custom limits and a named output
-graphly document.md --max-concepts 8 --max-keys 30 --output doc-graph.json
+# Use a different config file
+graphly document.md --config myconfig.yaml
 
 # Explore the result in the browser at http://127.0.0.1:3000
-graphly view doc-graph.json
+graphly view graph.json
 ```
 
 The first request may be slow while Taggly lazily loads its models; see Taggly's `WARMUP`
@@ -142,38 +140,39 @@ Steps to export the document graph to JSON:
 ## CLI Usage
 
 ```
-graphly <input> [options]
-graphly view <graph-file> [options]
+graphly <input> [--config <path>]
+graphly view <graph-file> [--config <path>]
 ```
 
-All configuration can be provided via a YAML config file or as CLI flags (flags take
-precedence). The repo ships a [config.yaml](config.yaml) listing every setting with its
-default value; graphly loads a `config.yaml` from the working directory automatically when
-no `--config` path is given. List settings (`concepts`, `colormaps`) are config-file only.
+All configuration lives in the YAML config file — `--config <path>` is the only CLI flag.
+The repo ships a [config.yaml](config.yaml) listing every setting; graphly loads
+`config.yaml` from the working directory when no `--config` path is given, and schema
+defaults fill any missing keys.
 
-| Flag | Config key | Default | Description |
-|------|------------|---------|-------------|
-| `--config <path>` | — | — | Path to YAML config file (default: `./config.yaml` if present) |
-| `--output <path>` | `output` | `graph.json` | Output file path |
-| — | `concepts` | `[concepts, entities]` | Tag categories extracted as concept nodes (`topics` is always added for the root; `keywords` is reserved for leaves) |
-| `--max-concepts <n>` | `max_concepts` | `16` | Maximum number of concept nodes |
-| `--max-keys <n>` | `max_keys` | `128` | Maximum number of leaf keyword nodes |
-| `--max-topics <n>` | `max_topics` | `8` | Maximum number of document topics |
-| `--max-leaves <n>` | `max_leaves` | `32` | Maximum leaf nodes per concept |
-| `--taggly-url <url>` | `taggly_url` | `http://127.0.0.1:8000` | Running Taggly API instance (`http://<host>:<port>`) |
+| Config key | Default | Description |
+|------------|---------|-------------|
+| `output` | `graph.json` | Output file path |
+| `concepts` | `[concepts, entities]` | Tag categories extracted as concept nodes (`topics` is always added for the root; `keywords` is reserved for leaves) |
+| `max_concepts` | `16` | Maximum number of concept nodes |
+| `max_keys` | `128` | Maximum number of leaf keyword nodes |
+| `max_topics` | `8` | Maximum number of document topics |
+| `max_leaves` | `32` | Maximum leaf nodes per concept |
+| `max_ngram` | `1` | Maximum words per keyword phrase (passed to Taggly `keys`) |
+| `taggly_url` | `http://127.0.0.1:8000` | Running Taggly API instance (`http://<host>:<port>`) |
 
 
 ## Viewer
 
 The `graphly view` command launches a minimal graph explorer for a single document graph file.
 Features:
-- Cloud layout: the root sits at the center and concepts pack around it on a golden-angle
-  spiral spaced by cluster size, with each leaf clustered around its parent concept — the
-  graph stays one compact cloud regardless of the concept count
+- Petal layout: concepts cluster tightly around the root on a small ring, and each
+  concept's leaves fan outward within the concept's angular wedge — clusters stay grouped
+  behind their parent for any concept count
 - Each concept gets a unique color from the configured `colormaps`, and every leaf takes
   its parent's exact color, so each cluster reads as one solid hue
-- Node size reflects the node's coverage `weight` (root largest, minor keywords smallest)
-- Edges are hidden by default (`--show-edges` to display the root→concept edges)
+- Node size reflects the node's coverage `weight` (root largest, minor keywords smallest),
+  and leaf labels render even at small sizes when zoomed out
+- Edges are hidden by default (`show_edges: true` displays the root→concept edges)
 - The side panel lists every concept with its color swatch
 
 Colormaps are schemes from [d3-scale-chromatic](https://d3js.org/d3-scale-chromatic), by
@@ -185,8 +184,8 @@ Listing several schemes splits the concepts between them.
 
 The viewer is based on the [sigma.js demo](https://github.com/jacomyal/sigma.js/tree/main/packages/demo).
 
-| Flag | Config key | Default | Description |
-|------|------------|---------|-------------|
-| `--port <n>` | `port` | `3000` | Viewer server port |
-| `--show-edges` | `show_edges` | `false` | Show edges (hidden by default) |
-| — | `colormaps` | `[YlOrBr]` | d3-scale-chromatic schemes for concept colors |
+| Config key | Default | Description |
+|------------|---------|-------------|
+| `port` | `3000` | Viewer server port |
+| `show_edges` | `false` | Show the root→concept edges (hidden by default) |
+| `colormaps` | `[YlOrBr]` | d3-scale-chromatic schemes for concept colors |

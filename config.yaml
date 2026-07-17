@@ -1,5 +1,5 @@
-# graphly default configuration — every setting with its default value.
-# CLI flags override these values; a file passed via --config replaces this one.
+# graphly configuration — every setting, loaded from the working directory.
+# Pass --config <path> to use another file; schema defaults fill missing keys.
 
 # Pipeline
 output: graph.json                # output file path
@@ -9,6 +9,7 @@ max_concepts: 16                  # maximum number of concept nodes
 max_keys: 256                     # maximum number of leaf keyword nodes
 max_topics: 8                     # maximum number of document topics
 max_leaves: 64                    # maximum leaf nodes per concept
+max_ngram: 1                      # maximum words per keyword phrase (taggly keys ngram_max)
 taggly_url: http://127.0.0.1:8000 # running Taggly API instance (http://<host>:<port>)
 
 # Viewer

@@ -16,6 +16,7 @@ export const config_schema = z.object({
   max_keys: z.number().int().positive().default(128),
   max_topics: z.number().int().positive().default(8),
   max_leaves: z.number().int().positive().default(32),
+  max_ngram: z.number().int().positive().default(1),
   taggly_url: z.url().default('http://127.0.0.1:8000'),
   show_edges: z.boolean().default(false),
   colormaps: z.array(z.string()).default(['YlOrBr']),

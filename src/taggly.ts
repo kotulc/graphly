@@ -46,9 +46,10 @@ export class TagglyClient {
     return data.description as string;
   }
 
-  /** Extract up to top_n keyword phrases from content. */
-  async keys(content: string, top_n: number): Promise<string[]> {
-    const data = await this.post('keys', { content }, { top_n: String(top_n) });
+  /** Extract up to top_n keyword phrases of up to ngram_max words from content. */
+  async keys(content: string, top_n: number, ngram_max: number): Promise<string[]> {
+    const data = await this.post('keys', { content },
+      { top_n: String(top_n), ngram_max: String(ngram_max) });
     return data.keywords as string[];
   }
 

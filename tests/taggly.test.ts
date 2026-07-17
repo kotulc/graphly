@@ -51,11 +51,11 @@ describe('desc', () => {
 
 
 describe('keys', () => {
-  it('posts content and returns keywords list', async () => {
+  it('posts content with top_n and ngram_max and returns keywords list', async () => {
     const mock = mock_fetch({ keywords: ['alpha', 'beta'] });
-    const result = await client.keys('some text', 5);
+    const result = await client.keys('some text', 5, 2);
     expect(result).toEqual(['alpha', 'beta']);
-    expect(mock.mock.calls[0][0]).toContain('keys?top_n=5');
+    expect(mock.mock.calls[0][0]).toContain('keys?top_n=5&ngram_max=2');
   });
 });
 

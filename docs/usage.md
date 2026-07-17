@@ -43,39 +43,38 @@ npm run build      # compiles to dist/; `npm run graphly -- <args>` runs from so
 ## Quickstart
 
 ```bash
-# Generate a graph from any non-binary text document (.md, .txt, .py, ...)
+# Generate a graph from any non-binary text document (.md, .txt, .py, ...);
+# settings come from ./config.yaml
 graphly document.md
 
-# Use a Taggly instance on another host or port
-graphly document.md --taggly-url http://192.168.1.20:8000
-
-# Generate with custom limits
-graphly document.md --max-concepts 8 --max-keys 30 --output doc-graph.json
+# Use a different config file
+graphly document.md --config myconfig.yaml
 
 # Explore the result at http://127.0.0.1:3000
-graphly view doc-graph.json
+graphly view graph.json
 ```
 
 
 ## Configuration
 
-All options can be set in a YAML config file or as CLI flags (flags take precedence).
+All settings live in the YAML config file — `--config <path>` is the only CLI flag.
 The repo root `config.yaml` lists every setting with its default value; graphly loads a
-`config.yaml` from the working directory automatically when no `--config` path is given.
-List settings (`concepts`, `colormaps`) can only be set in the config file.
+`config.yaml` from the working directory when no `--config` path is given, and schema
+defaults fill any missing keys.
 
-| Flag | Config key | Default | Description |
-|------|------------|---------|-------------|
-| `--output <path>` | `output` | `graph.json` | Output file path |
-| — | `concepts` | `[concepts, entities]` | Tag categories extracted as concept nodes (`topics` is always added for the root; `keywords` is reserved for leaves) |
-| `--max-concepts <n>` | `max_concepts` | `16` | Maximum number of concept nodes |
-| `--max-keys <n>` | `max_keys` | `128` | Maximum number of leaf keyword nodes |
-| `--max-topics <n>` | `max_topics` | `8` | Maximum number of document topics |
-| `--max-leaves <n>` | `max_leaves` | `32` | Maximum leaf nodes per concept |
-| `--taggly-url <url>` | `taggly_url` | `http://127.0.0.1:8000` | Running Taggly API instance (`http://<host>:<port>`) |
-| `--port <n>` | `port` | `3000` | Viewer server port |
-| `--show-edges` | `show_edges` | `false` | Show edges in the viewer (hidden by default) |
-| — | `colormaps` | `[YlOrBr]` | d3-scale-chromatic schemes for concept colors |
+| Config key | Default | Description |
+|------------|---------|-------------|
+| `output` | `graph.json` | Output file path |
+| `concepts` | `[concepts, entities]` | Tag categories extracted as concept nodes (`topics` is always added for the root; `keywords` is reserved for leaves) |
+| `max_concepts` | `16` | Maximum number of concept nodes |
+| `max_keys` | `128` | Maximum number of leaf keyword nodes |
+| `max_topics` | `8` | Maximum number of document topics |
+| `max_leaves` | `32` | Maximum leaf nodes per concept |
+| `max_ngram` | `1` | Maximum words per keyword phrase (passed to Taggly `keys`) |
+| `taggly_url` | `http://127.0.0.1:8000` | Running Taggly API instance (`http://<host>:<port>`) |
+| `port` | `3000` | Viewer server port |
+| `show_edges` | `false` | Show the root→concept edges in the viewer (hidden by default) |
+| `colormaps` | `[YlOrBr]` | d3-scale-chromatic schemes for concept colors |
 
 Example `config.yaml`:
 
@@ -85,6 +84,7 @@ concepts: [concepts, entities]
 max_concepts: 8
 max_keys: 64
 max_leaves: 16
+max_ngram: 2
 taggly_url: http://127.0.0.1:8000
 show_edges: false
 colormaps: [YlOrBr]
@@ -141,17 +141,17 @@ dropped from the graph.
 ## Viewer
 
 ```bash
-graphly view graph.json [--port 3000] [--show-edges]
+graphly view graph.json [--config <path>]
 ```
 
 Serves a single-page Sigma.js explorer (no build step; libraries load from CDN as ES
-modules). Node size reflects the node level (root largest, leaves smallest). Edges are
-hidden by default; pass `--show-edges` (or set `show_edges: true`) to display them.
+modules). Node size reflects the node's coverage weight (root largest), and labels render
+even for small leaf nodes when zoomed out. Edges are hidden by default; set
+`show_edges: true` to display the root→concept edges.
 
-Layout: a cloud layout places the root at the center and packs concepts around it on a
-golden-angle spiral, spaced by the typical cluster size (each cluster's radius grows with
-its leaf count). Each leaf fills its parent's cluster disc on a golden-angle spiral, so
-clusters sit shoulder-to-shoulder as one compact cloud for any concept count. A leaf
+Layout: a petal layout places the root at the center with concepts clustered tightly
+around it on a small ring, and each concept's leaves fan outward within the concept's
+angular wedge — clusters stay grouped behind their parent for any concept count. A leaf
 listed by several concepts clusters with the concept that ranks it highest.
 
 Coloring and size: each concept is assigned a unique color from the configured
