@@ -5,17 +5,12 @@
 output: graph.json                # output file path
 concepts: [concepts, entities]    # tag categories for concept nodes ('topics' is always
                                   # added for the root; 'keywords' is reserved for leaves)
-max_concepts: 16                  # maximum number of concept nodes
-max_keys: 256                     # maximum number of leaf keyword nodes
-max_topics: 8                     # maximum number of document topics
-max_leaves: 64                    # maximum leaf nodes per concept
+max_concepts: 8                   # maximum number of concept nodes
+max_keys: 128                     # maximum number of leaf keyword nodes
+max_topics: 4                     # maximum number of document topics
+max_leaves: 16                    # maximum leaf nodes per concept
 max_ngram: 1                      # maximum words per keyword phrase (taggly keys ngram_max)
 taggly_url: http://127.0.0.1:8000 # running Taggly API instance (http://<host>:<port>)
 
 # Viewer
-port: 3001                        # viewer server port
-show_edges: true                  # edges are hidden by default
-colormaps: [interpolatePlasma]    # d3-scale-chromatic schemes assigned to concept nodes:
-                                  # sequential (YlOrBr, Plasma, Viridis, ...) and cyclical
-                                  # (Rainbow, Sinebow) interpolators are sampled evenly;
-                                  # categorical (Tableau10, Set2, ...) are used as-is
+port: 3000                        # viewer server port

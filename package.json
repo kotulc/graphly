@@ -1,17 +1,19 @@
 {
   "name": "graphly",
   "version": "0.1.0",
-  "description": "A document knowledge graph generator built with Graphology and Sigma.js",
+  "description": "A treemap page-index component and Taggly-backed document graph generator",
   "type": "module",
   "bin": {
     "graphly": "dist/main.js"
   },
   "files": [
     "dist",
-    "viewer"
+    "viewer",
+    "component"
   ],
   "scripts": {
     "build": "tsc",
+    "bundle": "esbuild component/entry.js --bundle --format=esm --outfile=component/d3_hierarchy.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "graphly": "tsx src/main.ts"
@@ -19,13 +21,14 @@
   "license": "MIT",
   "dependencies": {
     "commander": "^15.0.0",
-    "graphology": "^0.26.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
-    "graphology-types": "^0.24.8",
+    "d3-hierarchy": "^3.1.2",
+    "esbuild": "^0.25.0",
+    "jsdom": "^26.0.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"

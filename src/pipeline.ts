@@ -1,21 +1,21 @@
 /**
  * Document graph pipeline: orchestrates Taggly commands (tags, desc, keys,
- * rank, score) into a serialized Graphology graph (README pipeline steps 1-7).
+ * rank, score) into the tree data file consumed by the treemap component
+ * (README pipeline steps 1-7).
  */
 
 import { basename } from 'node:path';
-import { SerializedGraph } from 'graphology-types';
 
 import { Config } from './config.js';
-import { build_graph, Concept, LeafInfo } from './graph.js';
+import { build_tree, Concept, LeafInfo, TreeFile } from './tree.js';
 import { count_matches, count_words, find_forms } from './ngrams.js';
 import { TagglyClient } from './taggly.js';
 
 
-/** Run the full pipeline on a document and return the serialized graph. */
+/** Run the full pipeline on a document and return the tree data file. */
 export async function generate_graph(
     text: string, input_path: string, config: Config, client: TagglyClient
-): Promise<SerializedGraph> {
+): Promise<TreeFile> {
   // 1. Extract tag groups for the configured concept categories ('topics' added for
   //    the root; 'keywords' is reserved for leaves and never a concept category)
   const categories = config.concepts.filter(c => c !== 'keywords');
@@ -25,14 +25,14 @@ export async function generate_graph(
   // 2. Generate a document description
   const description = await client.desc(text);
 
-  // 3. Rank the extracted topic group by relevance to the description; root label = topics[0]
+  // 3. Rank the extracted topic group by relevance to the description; root name = topics[0]
   const topic_pool = groups['topics'] ?? [];
   const topics = topic_pool.length
     ? await client.rank(description, topic_pool, config.max_topics) : [];
 
   // 4. Select concept nodes from the combined relevance order: only tags belonging to a
   //    configured category qualify, root topics are excluded, first category wins. Each
-  //    concept is scored against the root query (stored as the root→concept edge weight).
+  //    concept is scored against the root query (stored as its 'relevance' value).
   const category_of = new Map<string, string>();
   for (const category of categories)
     for (const key of groups[category] ?? [])
@@ -58,17 +58,18 @@ export async function generate_graph(
   for (const concept of concepts)
     leaves_by_concept.set(concept.key, await client.rank(concept.key, leaves, config.max_leaves));
 
-  // 7. Leaf coverage stats: surface forms, occurrence count, and weight — the
-  //    fraction of document words covered by the leaf's occurrences
+  // 7. Leaf values: relevance to the root query plus local document stats — surface
+  //    forms, occurrence count, and coverage (fraction of document words covered)
   const total_words = count_words(text);
-  const assigned = new Set([...leaves_by_concept.values()].flat());
-  const leaf_info = new Map<string, LeafInfo>([...assigned].map(leaf => {
+  const assigned = [...new Set([...leaves_by_concept.values()].flat())];
+  const relevances = assigned.length ? await client.score(query, assigned) : [];
+  const leaf_info = new Map<string, LeafInfo>(assigned.map((leaf, i) => {
     const count = count_matches(leaf, text);
-    const weight = total_words ? count * count_words(leaf) / total_words : 0;
-    return [leaf, { forms: find_forms(leaf, text), count, weight }];
+    const coverage = total_words ? count * count_words(leaf) / total_words : 0;
+    return [leaf, { forms: find_forms(leaf, text), count, coverage,
+                    relevance: relevances[i] ?? 0 }];
   }));
 
-  return build_graph(
-    basename(input_path), description, topics, concepts, leaves_by_concept, leaf_info
-  ).export();
+  return build_tree(
+    basename(input_path), description, topics, concepts, leaves_by_concept, leaf_info);
 }

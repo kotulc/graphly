@@ -26,8 +26,7 @@ describe('load_config', () => {
     expect(config.max_leaves).toBe(32);
     expect(config.max_ngram).toBe(1);
     expect(config.taggly_url).toBe('http://127.0.0.1:8000');
-    expect(config.show_edges).toBe(false);
-    expect(config.colormaps).toEqual(['YlOrBr']);
+    expect(config.port).toBe(3000);
   });
 
   it('reads values from a YAML config file', () => {

@@ -1,0 +1,8 @@
+# Example mdsite build embedding the graphly component (see README.md).
+# Build from the graphly repo root with a local mdsite checkout:
+#   node ../mdsite/scripts/cli.js build --config examples/site/mdsite.yaml
+title: Graphly Example
+content: ./docs
+output: ./dist
+components: ../../component   # graphly component files, mirrored to components/custom/
+assets: ./assets              # tree data files, mirrored to public/assets/

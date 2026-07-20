@@ -1,180 +1,56 @@
 <!doctype html>
-<!-- graphly viewer: minimal single-file sigma.js explorer for one graph file.
-     Settings (edge visibility, colormaps) are config-driven and served by
-     `graphly view` at /settings.json alongside /graph.json. -->
-<html>
+<!-- Sample viewer: renders a tree data file with the same treemap module the
+     mdsite component uses. Selects switch the size and color values; the
+     theme button flips the heatmap ramp between light and dark. -->
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <title>graphly viewer</title>
-  <style>
-    body { margin: 0; font-family: system-ui, sans-serif; }
-    #app { position: absolute; inset: 0; }
-    #panel { position: absolute; top: 12px; left: 12px; z-index: 1; min-width: 180px;
-             max-height: 90vh; overflow-y: auto; padding: 10px 14px; font-size: 13px;
-             background: #ffffffd9; border-radius: 8px; box-shadow: 0 1px 4px #0003; }
-    #panel h3 { margin: 8px 0 4px; font-size: 13px; }
-    #panel li { list-style: none; margin: 2px 0; }
-    #panel ul { margin: 0; padding: 0; }
-    .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 6px;
-              border-radius: 5px; border: 1px solid #b8b2a7; vertical-align: baseline; }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>graphly viewer</title>
+<style>
+  :root { --site-hs: 212deg 100%; }
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 1.5rem auto; max-width: 720px;
+         padding: 0 1rem; color-scheme: light; }
+  body.dark { --site-hs: 204deg 100%; background: #111; color: #eee; color-scheme: dark; }
+  header { display: flex; gap: .75rem; align-items: center; margin-bottom: 1rem; }
+  h1 { font-size: 1.1rem; margin: 0 auto 0 0; }
+  #treemap { position: relative; width: 100%; height: 180px; }
+  select, button { font: inherit; }
+</style>
 </head>
 <body>
-<div id="app"></div>
-<div id="panel"></div>
+<header>
+  <h1 id="title">graphly</h1>
+  <label>size <select id="size"></select></label>
+  <label>color <select id="color"></select></label>
+  <button id="theme" type="button">dark</button>
+</header>
+<div id="treemap"></div>
 <script type="module">
-  import Graph from 'https://esm.sh/graphology@0.26.0';
-  import Sigma from 'https://esm.sh/sigma@3.0.2?deps=graphology@0.26.0';
-  import { color, lab } from 'https://esm.sh/d3-color@3';
-  import * as chromatic from 'https://esm.sh/d3-scale-chromatic@3?deps=d3-color@3,d3-interpolate@3';
+  import { render_treemap } from '/component/treemap.js';
 
-  const ROOT_FILL = '#8a8378';
-  const GOLDEN = 2.39996;           // golden angle for spiral placement
-  const CYCLICAL = new Set(['Rainbow', 'Sinebow']);
+  const tree = await (await fetch('/graph.json')).json();
+  const el = document.getElementById('treemap');
+  const size = document.getElementById('size');
+  const color = document.getElementById('color');
 
-  // Usable sub-range of a sequential interpolator: trim ends too pale to see
-  // on a white background (CIELAB lightness above 90)
-  function usable_range(interpolate) {
-    const steps = Array.from({ length: 21 }, (_, i) => i / 20);
-    const visible = steps.filter(t => lab(interpolate(t)).l <= 90);
-    return visible.length ? [visible[0], visible[visible.length - 1]] : [0, 1];
-  }
+  // Populate the value selects from the file's declared value names
+  document.getElementById('title').textContent = tree.title;
+  for (const select of [size, color])
+    select.append(...tree.values.map(name => new Option(name, name)));
+  size.value = tree.values.includes('coverage') ? 'coverage' : tree.values[0];
+  color.value = tree.values.includes('relevance') ? 'relevance' : tree.values[0];
 
-  // Build one color per concept from the configured d3-scale-chromatic schemes
-  // (the interpolate/scheme prefix is optional): interpolators — sequential
-  // (YlOrBr, Plasma, Viridis, …) or cyclical (Rainbow, Sinebow) — are sampled
-  // evenly across the concept count; categorical schemes (Tableau10, Set2, …)
-  // are used as-is
-  function palette(colormaps, count) {
-    const per = Math.ceil(count / colormaps.length);
-    return colormaps.flatMap(raw => {
-      const name = raw.replace(/^(interpolate|scheme)/, '');
-      const interpolate = chromatic['interpolate' + name];
-      if (interpolate && CYCLICAL.has(name))  // endpoints coincide: sample i/per
-        return Array.from({ length: per },
-          (_, i) => color(interpolate(i / per)).formatHex());
-      if (interpolate) {
-        const [lo, hi] = usable_range(interpolate);
-        return Array.from({ length: per },
-          (_, i) => color(interpolate(lo + (hi - lo) * ((i + 0.5) / per))).formatHex());
-      }
-      return (chromatic['scheme' + name] ?? []).filter(c => typeof c === 'string');
-    });
-  }
-
-  // Assign each leaf to one parent concept via the concepts' children lists:
-  // the concept ranking the leaf earliest wins (first concept breaks ties)
-  function assign_parents(graph) {
-    const best_rank = {};
-    const parent_of = {};
-    graph.forEachNode((node, attrs) => {
-      if (['topic', 'keyword'].includes(attrs.category)) return;
-      (attrs.children ?? []).forEach((leaf, rank) => {
-        if (!(leaf in parent_of) || rank < best_rank[leaf])
-          { parent_of[leaf] = node; best_rank[leaf] = rank; }
-      });
-    });
-    return parent_of;
-  }
-
-  // Style every node: label from key, size from the node's document-coverage
-  // weight, and one flat color per cluster — each concept gets a unique palette
-  // color and every leaf its parent's exact color. Returns {concept: color}.
-  function style_nodes(graph, settings, parent_of) {
-    const concepts = graph.filterNodes(
-      (_, attrs) => !['topic', 'keyword'].includes(attrs.category));
-    const colors = palette(settings.colormaps, concepts.length);
-    const concept_color = {};
-    concepts.forEach((node, i) => { concept_color[node] = colors[i % colors.length]; });
-
-    graph.forEachNode((node, attrs) => {
-      const is_root = attrs.category === 'topic';
-      const fill = is_root ? ROOT_FILL
-        : concept_color[node] ?? concept_color[parent_of[node]] ?? '#8a8378';
-      graph.mergeNodeAttributes(node, {
-        label: attrs.key,
-        size: Math.min(24, 3 + 28 * Math.sqrt(attrs.weight ?? 0)),
-        color: fill,
-      });
-    });
-    return concept_color;
-  }
-
-  // Petal layout, generic in the concept count: concepts cluster tightly around
-  // the root on a small ring, and each concept's leaves fan outward inside the
-  // concept's angular wedge — clusters stay behind their parent for any count.
-  function cluster_layout(graph, concept_color, parent_of) {
-    const concepts = Object.keys(concept_color);
-    const n = concepts.length || 1;
-    const wedge = 2 * Math.PI / n;
-    const ring = Math.max(2, 0.22 * n);  // concepts shoulder-to-shoulder near the root
-
-    const counts = {};
-    for (const parent of Object.values(parent_of))
-      if (parent) counts[parent] = (counts[parent] ?? 0) + 1;
-    const max_count = Math.max(1, ...Object.values(counts));
-    const rim = ring + 1.6 + 0.55 * Math.sqrt(max_count);
-
-    graph.forEachNode((node, attrs) => {
-      if (attrs.category === 'topic') graph.mergeNodeAttributes(node, { x: 0, y: 0 });
-    });
-    const angle_of = {};
-    concepts.forEach((node, i) => {
-      const angle = (angle_of[node] = i * wedge);
-      graph.mergeNodeAttributes(node,
-        { x: ring * Math.cos(angle), y: ring * Math.sin(angle) });
-    });
-
-    // Leaves spread outward from the ring, jittered across their parent's wedge
-    // with a golden-ratio sequence (orphans land past the outer rim)
-    const rank = {};
-    graph.forEachNode((node, attrs) => {
-      if (attrs.category !== 'keyword') return;
-      const parent = parent_of[node];
-      const k = (rank[parent ?? '#'] = (rank[parent ?? '#'] ?? 0) + 1);
-      const jitter = ((k * 0.618034) % 1) - 0.5;
-      const angle = parent ? angle_of[parent] + wedge * 0.85 * jitter : k * GOLDEN;
-      const r = parent ? ring + 0.8 + 0.55 * Math.sqrt(k) : rim;
-      graph.mergeNodeAttributes(node,
-        { x: r * Math.cos(angle), y: r * Math.sin(angle) });
-    });
-  }
-
-  // Side panel: concept color legend, one swatch per concept node
-  function render_panel(concept_color) {
-    const items = Object.entries(concept_color).map(([node, fill]) =>
-      `<li><span class="swatch" style="background:${fill}"></span>${node}</li>`);
-    document.getElementById('panel').innerHTML =
-      `<h3>Concepts</h3><ul>${items.join('')}</ul>`;
-  }
-
-  async function main() {
-    const [graph_data, settings] = await Promise.all([
-      fetch('/graph.json').then(response => response.json()),
-      fetch('/settings.json').then(response => response.json()),
-    ]);
-    const graph = Graph.from(graph_data);
-
-    const parent_of = assign_parents(graph);
-    const concept_color = style_nodes(graph, settings, parent_of);
-    render_panel(concept_color);
-    if (!settings.show_edges)
-      graph.forEachEdge(edge => graph.setEdgeAttribute(edge, 'hidden', true));
-
-    cluster_layout(graph, concept_color, parent_of);
-
-    new Sigma(graph, document.getElementById('app'), {
-      defaultEdgeColor: '#ddd',
-      labelRenderedSizeThreshold: 2,  // label small leaf nodes even when zoomed out
-      labelDensity: 2,
-      labelGridCellSize: 80,
-    });
-  }
-
-  // Surface failures in the panel instead of leaving a silently blank page
-  main().catch(error => {
-    document.getElementById('panel').innerHTML = `<h3>Error</h3><p>${error.message}</p>`;
+  const draw = () => render_treemap(el, tree, {
+    size: size.value, color: color.value,
+    dark: document.body.classList.contains('dark'),
   });
+
+  size.onchange = color.onchange = draw;
+  document.getElementById('theme').onclick =
+    () => { document.body.classList.toggle('dark'); draw(); };
+  addEventListener('resize', draw);
+  draw();
 </script>
 </body>
 </html>

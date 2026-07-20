@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "title": "Systems Design Notes",
+  "values": ["relevance", "coverage", "count"],
+  "root": {
+    "name": "Systems Design Notes",
+    "values": { "relevance": 1, "coverage": 0.31, "count": 24 },
+    "meta": { "description": "Sample page index for the graphly treemap component" },
+    "children": [
+      {
+        "name": "Architecture", "href": "#architecture",
+        "values": { "relevance": 0.72, "coverage": 0.18, "count": 14 },
+        "meta": { "category": "concepts" },
+        "children": [
+          { "name": "event bus", "href": "#architecture",
+            "values": { "relevance": 0.61, "coverage": 0.08, "count": 6 },
+            "meta": { "forms": "event bus, Event Bus" } },
+          { "name": "sharding", "href": "#architecture",
+            "values": { "relevance": 0.44, "coverage": 0.06, "count": 5 },
+            "meta": { "forms": "sharding" } },
+          { "name": "latency", "href": "#architecture",
+            "values": { "relevance": 0.29, "coverage": 0.04, "count": 3 },
+            "meta": { "forms": "latency" } }
+        ]
+      },
+      {
+        "name": "Operations", "href": "#operations",
+        "values": { "relevance": 0.55, "coverage": 0.13, "count": 10 },
+        "meta": { "category": "concepts" },
+        "children": [
+          { "name": "deployment", "href": "#operations",
+            "values": { "relevance": 0.52, "coverage": 0.06, "count": 5 },
+            "meta": { "forms": "deployment, deployments" } },
+          { "name": "rollback", "href": "#operations",
+            "values": { "relevance": 0.38, "coverage": 0.04, "count": 3 },
+            "meta": { "forms": "rollback" } },
+          { "name": "monitoring", "href": "#operations",
+            "values": { "relevance": 0.21, "coverage": 0.03, "count": 2 },
+            "meta": { "forms": "monitoring" } }
+        ]
+      }
+    ]
+  }
+}
